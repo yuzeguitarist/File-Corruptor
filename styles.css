@@ -121,63 +121,6 @@ body {
     font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
 }
 
-.supported-formats {
-    margin-top: var(--spacing-sm);
-    text-align: left;
-    border: 1px solid var(--black);
-    background-color: var(--white);
-    padding: var(--spacing-sm);
-    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-}
-
-.supported-formats summary {
-    cursor: pointer;
-    font-weight: 600;
-    list-style: none;
-}
-
-.supported-formats[open] {
-    background-color: var(--gray-100);
-}
-
-.supported-formats summary::-webkit-details-marker {
-    display: none;
-}
-
-.supported-formats summary::after {
-    content: '＋';
-    float: right;
-    transition: transform 0.3s ease;
-}
-
-.supported-formats[open] summary::after {
-    content: '－';
-}
-
-.format-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--spacing-sm);
-    margin-top: var(--spacing-sm);
-}
-
-.format-category {
-    border: 1px dashed var(--gray-300);
-    padding: var(--spacing-sm);
-    background-color: var(--white);
-}
-
-.format-category h3 {
-    font-size: 14px;
-    margin-bottom: var(--spacing-xs);
-}
-
-.format-items {
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--gray-500);
-}
-
 .file-input {
     position: absolute;
     top: 0;
@@ -231,18 +174,48 @@ body {
 
 .advanced-settings {
     margin-bottom: var(--spacing-lg);
+    margin-top: var(--spacing-md);
 }
 
 .advanced-settings details {
     border: 1px solid var(--black);
     background-color: var(--gray-100);
     padding: var(--spacing-sm);
+    transition: var(--transition);
+}
+
+.advanced-settings details:hover {
+    background-color: var(--gray-200);
+}
+
+.advanced-settings details[open] {
+    background-color: var(--gray-100);
 }
 
 .advanced-settings summary {
     cursor: pointer;
     font-weight: 600;
     font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    user-select: none;
+    list-style: none;
+    position: relative;
+    padding-left: 20px;
+}
+
+.advanced-settings summary::-webkit-details-marker {
+    display: none;
+}
+
+.advanced-settings summary::before {
+    content: '▸';
+    position: absolute;
+    left: 0;
+    transition: transform 0.2s ease;
+}
+
+.advanced-settings details[open] summary::before {
+    transform: rotate(90deg);
 }
 
 .advanced-options {
@@ -260,25 +233,35 @@ body {
     border: 1px dashed var(--gray-300);
     background-color: var(--white);
     transition: var(--transition);
+    cursor: pointer;
 }
 
 .advanced-option:hover {
     border-color: var(--black);
+    border-style: solid;
 }
 
-.advanced-option input {
-    margin-top: 4px;
+.advanced-option input[type="checkbox"] {
+    margin-top: 2px;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: var(--black);
 }
 
 .option-title {
     font-weight: 600;
     font-size: 14px;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    transition: var(--transition);
 }
 
 .option-desc {
     font-size: 12px;
     color: var(--gray-500);
     margin-top: 4px;
+    line-height: 1.4;
 }
 
 .corruption-levels {
@@ -290,10 +273,13 @@ body {
 
 .level-option {
     cursor: pointer;
+    user-select: none;
 }
 
 .level-option input[type="radio"] {
-    display: none;
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .level-card {

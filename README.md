@@ -30,8 +30,8 @@ File Corruptor 是一个完全在浏览器本地运行的文件破坏工具，�
 - 🎨 **极简设计** - 黑白配色，Apple 风格界面
 - ⚡ **即开即用** - 无需安装，打开即用
 - 📱 **响应式** - 完美支持桌面和移动设备
-- 📊 **破坏报告** - 自动生成详细报告，可选导出 JSON 以便审计
-- 🧩 **高级选项** - 支持随机化文件名、嵌入签名、查看完整格式清单
+- 📊 **破坏报告** - 自动生成详细报告，展示破坏细节
+- 🧩 **高级选项** - 支持随机化文件名、嵌入签名、导出报告
 
 ### 🚀 快速开始
 
@@ -54,11 +54,10 @@ start index.html # Windows
 ### 📝 使用方法
 
 1. **上传文件** - 点击或拖拽文件到上传区域
-2. **查看格式** - 如有需要，展开“查看全部支持格式”了解兼容性
-3. **选择程度** - 选择破坏程度（轻度/中度/重度）
-4. **开启高级选项（可选）** - 自定义文件名、签名、报告等
-5. **破坏文件** - 点击"破坏文件"按钮
-6. **下载文件** - 自动下载损坏后的文件，并查看破坏报告
+2. **选择程度** - 选择破坏程度（轻度/中度/重度）
+3. **高级选项（可选）** - 展开高级设置，自定义文件名、签名、报告等
+4. **破坏文件** - 点击"破坏文件"按钮
+5. **下载文件** - 自动下载损坏后的文件，并查看破坏报告
 
 ### ⚙️ 高级选项
 
@@ -139,8 +138,8 @@ File Corruptor is a client-side file corruption tool that runs entirely in your 
 - 🎨 **Minimal Design** - Black & white, Apple-inspired interface
 - ⚡ **Zero Setup** - No installation required
 - 📱 **Responsive** - Works on desktop and mobile
-- 📊 **Corruption Report** - Generates detailed reports with optional JSON export
-- 🧩 **Advanced Controls** - Randomize filenames, embed signatures, browse the full format catalog
+- 📊 **Corruption Report** - Generates detailed reports showing corruption details
+- 🧩 **Advanced Controls** - Randomize filenames, embed signatures, export reports
 
 ### 🚀 Quick Start
 
@@ -163,11 +162,10 @@ start index.html # Windows
 ### 📝 How to Use
 
 1. **Upload File** - Click or drag file to upload area
-2. **Review Formats** - Expand “View all supported formats” if you need compatibility info
-3. **Select Level** - Choose corruption level (Light/Medium/Heavy)
-4. **Advanced Options (Optional)** - Customize filename, signature, and report behavior
-5. **Corrupt File** - Click "Corrupt File" button
-6. **Download & Review** - File downloads automatically with an in-app corruption report
+2. **Select Level** - Choose corruption level (Light/Medium/Heavy)
+3. **Advanced Options (Optional)** - Expand advanced settings to customize filename, signature, and report
+4. **Corrupt File** - Click "Corrupt File" button
+5. **Download & Review** - File downloads automatically with an in-app corruption report
 
 ### ⚙️ Advanced Options
 

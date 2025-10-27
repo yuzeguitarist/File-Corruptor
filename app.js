@@ -181,8 +181,6 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
 // ==================== DOM 元素 ====================
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
-const uploadHint = document.getElementById('uploadHint');
-const formatList = document.getElementById('formatList');
 const fileInfo = document.getElementById('fileInfo');
 const fileName = document.getElementById('fileName');
 const fileSize = document.getElementById('fileSize');
@@ -204,8 +202,12 @@ let lastCorruptionReport = null;
 // ==================== 文件上传处理 ====================
 
 // 点击上传区域触发文件选择
-uploadArea.addEventListener('click', () => {
-    fileInput.click();
+uploadArea.addEventListener('click', (e) => {
+    // 防止事件冒泡
+    if (e.target !== fileInput) {
+        e.preventDefault();
+        fileInput.click();
+    }
 });
 
 // 文件选择处理
@@ -214,7 +216,7 @@ fileInput.addEventListener('change', (e) => {
     if (file) {
         handleFileSelect(file);
     }
-});
+}, { once: false });
 
 // 拖拽上传处理
 uploadArea.addEventListener('dragover', (e) => {
@@ -664,10 +666,15 @@ function downloadCorruptedFile(data, originalName, options = {}) {
 // ==================== 辅助函数 ====================
 
 function getAdvancedOptions() {
+    // 实时获取checkbox状态，而不是依赖全局变量
+    const randomizeName = document.getElementById('randomizeName');
+    const downloadReport = document.getElementById('downloadReport');
+    const embedSignature = document.getElementById('embedSignature');
+    
     return {
-        randomizeName: Boolean(randomizeNameCheckbox?.checked),
-        downloadReport: Boolean(downloadReportCheckbox?.checked),
-        embedSignature: Boolean(embedSignatureCheckbox?.checked)
+        randomizeName: randomizeName ? randomizeName.checked : false,
+        downloadReport: downloadReport ? downloadReport.checked : false,
+        embedSignature: embedSignature ? embedSignature.checked : true
     };
 }
 
@@ -915,37 +922,6 @@ function getSupportedFormatsSummary() {
         .join('\n');
 }
 
-function renderSupportedFormats() {
-    if (!formatList) return;
-    formatList.innerHTML = '';
-    const fragment = document.createDocumentFragment();
-
-    Object.values(FILE_CATEGORIES).forEach((category) => {
-        const card = document.createElement('div');
-        card.className = 'format-category';
-
-        const title = document.createElement('h3');
-        title.textContent = category.label;
-        card.appendChild(title);
-
-        const list = document.createElement('p');
-        list.className = 'format-items';
-        list.textContent = Object.keys(category.formats)
-            .map((ext) => `.${ext}`)
-            .sort()
-            .join(', ');
-        card.appendChild(list);
-
-        fragment.appendChild(card);
-    });
-
-    formatList.appendChild(fragment);
-}
-
-function updateUploadHint() {
-    if (!uploadHint) return;
-    uploadHint.textContent = `支持 ${Object.keys(SUPPORTED_FORMATS).length}+ 种常见格式，点击查看完整列表`;
-}
 
 function translateLevel(level) {
     const mapping = {
@@ -989,8 +965,6 @@ function resetApp() {
 }
 
 // ==================== 初始化 ====================
-renderSupportedFormats();
-updateUploadHint();
 console.log('文件破坏工具已加载');
 console.log('支持的破坏程度：轻度、中度、重度');
 console.log('⚠️ 请勿用于不当用途');
