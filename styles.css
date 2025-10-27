@@ -1,0 +1,427 @@
+/* ==================== 全局样式 ==================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --black: #000000;
+    --white: #ffffff;
+    --gray-100: #f5f5f5;
+    --gray-200: #e5e5e5;
+    --gray-300: #d4d4d4;
+    --gray-400: #a3a3a3;
+    --gray-500: #737373;
+    --spacing-xs: 8px;
+    --spacing-sm: 16px;
+    --spacing-md: 24px;
+    --spacing-lg: 32px;
+    --spacing-xl: 48px;
+    --border-radius: 2px;
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--white);
+    color: var(--black);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: var(--spacing-md);
+}
+
+/* ==================== 主容器 ==================== */
+.container {
+    width: 100%;
+    max-width: 800px;
+    border: 2px solid var(--black);
+    padding: var(--spacing-xl);
+    background-color: var(--white);
+}
+
+/* ==================== 头部区域 ==================== */
+.header {
+    text-align: center;
+    padding-bottom: var(--spacing-lg);
+    border-bottom: 2px solid var(--black);
+    margin-bottom: var(--spacing-xl);
+}
+
+.logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: var(--spacing-md);
+}
+
+.title {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: var(--spacing-xs);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.subtitle {
+    font-size: 14px;
+    color: var(--gray-500);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    letter-spacing: 0.5px;
+}
+
+/* ==================== 上传区域 ==================== */
+.upload-section {
+    margin-bottom: var(--spacing-lg);
+}
+
+.upload-area {
+    border: 2px dashed var(--black);
+    padding: var(--spacing-xl);
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition);
+    position: relative;
+    background-color: var(--white);
+}
+
+.upload-area:hover {
+    background-color: var(--gray-100);
+    border-color: var(--gray-500);
+}
+
+.upload-area.dragover {
+    background-color: var(--gray-200);
+    border-color: var(--black);
+    border-style: solid;
+}
+
+/* SVG 旋转动画 */
+#uploadIcon {
+    transform-origin: center;
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.upload-area:hover #uploadIcon {
+    transform: rotate(360deg);
+}
+
+.upload-text {
+    font-size: 18px;
+    font-weight: 600;
+    margin: var(--spacing-md) 0 var(--spacing-xs) 0;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.upload-hint {
+    font-size: 13px;
+    color: var(--gray-500);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.file-input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* ==================== 文件信息 ==================== */
+.file-info {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    border: 1px solid var(--black);
+    background-color: var(--gray-100);
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--spacing-xs) 0;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+}
+
+.info-label {
+    font-weight: 600;
+    color: var(--black);
+}
+
+.info-value {
+    color: var(--gray-500);
+    text-align: right;
+    word-break: break-all;
+    max-width: 60%;
+}
+
+/* ==================== 选项区域 ==================== */
+.options-section {
+    margin-bottom: var(--spacing-lg);
+}
+
+.section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: var(--spacing-md);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    letter-spacing: -0.3px;
+}
+
+.corruption-levels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+.level-option {
+    cursor: pointer;
+}
+
+.level-option input[type="radio"] {
+    display: none;
+}
+
+.level-card {
+    border: 2px solid var(--gray-300);
+    padding: var(--spacing-md);
+    transition: var(--transition);
+    background-color: var(--white);
+    height: 100%;
+}
+
+.level-card:hover {
+    border-color: var(--black);
+    background-color: var(--gray-100);
+}
+
+.level-option input[type="radio"]:checked + .level-card {
+    border-color: var(--black);
+    background-color: var(--black);
+    color: var(--white);
+}
+
+.level-name {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: var(--spacing-xs);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.level-desc {
+    font-size: 13px;
+    opacity: 0.8;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+/* ==================== 按钮 ==================== */
+.action-buttons {
+    display: flex;
+    gap: var(--spacing-sm);
+    justify-content: flex-end;
+}
+
+.btn {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    font-size: 15px;
+    font-weight: 600;
+    border: 2px solid var(--black);
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    letter-spacing: 0.3px;
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+.btn-primary {
+    background-color: var(--black);
+    color: var(--white);
+}
+
+.btn-primary:hover {
+    background-color: var(--gray-500);
+    border-color: var(--gray-500);
+}
+
+.btn-secondary {
+    background-color: var(--white);
+    color: var(--black);
+}
+
+.btn-secondary:hover {
+    background-color: var(--gray-100);
+}
+
+/* ==================== 状态区域 ==================== */
+.status-section {
+    text-align: center;
+    padding: var(--spacing-xl) 0;
+}
+
+.status-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid var(--gray-200);
+    border-top-color: var(--black);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.status-text {
+    font-size: 16px;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    color: var(--gray-500);
+}
+
+/* ==================== 成功区域 ==================== */
+.success-section {
+    text-align: center;
+    padding: var(--spacing-xl) 0;
+}
+
+.success-section svg {
+    margin-bottom: var(--spacing-md);
+}
+
+.success-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: var(--spacing-xs);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.success-desc {
+    font-size: 14px;
+    color: var(--gray-500);
+    margin-bottom: var(--spacing-lg);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+/* ==================== 底部区域 ==================== */
+.footer {
+    padding-top: var(--spacing-lg);
+    border-top: 2px solid var(--black);
+    margin-top: var(--spacing-xl);
+}
+
+.warning {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    border: 1px solid var(--black);
+    background-color: var(--gray-100);
+    font-size: 12px;
+    line-height: 1.5;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.warning svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.footer-links {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.footer-link {
+    color: var(--black);
+    text-decoration: none;
+    transition: var(--transition);
+    border-bottom: 1px solid transparent;
+}
+
+.footer-link:hover {
+    border-bottom-color: var(--black);
+}
+
+.footer-divider {
+    color: var(--gray-400);
+}
+
+.copyright {
+    text-align: center;
+    margin-top: var(--spacing-md);
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--gray-500);
+    letter-spacing: 0.5px;
+}
+
+/* ==================== 响应式设计 ==================== */
+@media (max-width: 640px) {
+    .container {
+        padding: var(--spacing-md);
+    }
+
+    .title {
+        font-size: 24px;
+    }
+
+    .corruption-levels {
+        grid-template-columns: 1fr;
+    }
+
+    .action-buttons {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+
+    .info-row {
+        flex-direction: column;
+        gap: var(--spacing-xs);
+    }
+
+    .info-value {
+        max-width: 100%;
+        text-align: left;
+    }
+}
+
+/* ==================== 动画效果 ==================== */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.file-info,
+.options-section,
+.status-section,
+.success-section {
+    animation: fadeIn 0.4s ease-out;
+}
