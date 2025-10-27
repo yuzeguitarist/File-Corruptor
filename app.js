@@ -160,12 +160,16 @@ function handleFileSelect(file) {
  */
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
-    
+
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+    const exponent = Math.min(
+        Math.floor(Math.log(bytes) / Math.log(k)),
+        sizes.length - 1
+    );
+    const size = bytes / Math.pow(k, exponent);
+
+    return Math.round(size * 100) / 100 + ' ' + sizes[exponent];
 }
 
 // ==================== 按钮事件处理 ====================
