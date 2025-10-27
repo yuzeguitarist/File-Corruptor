@@ -35,7 +35,11 @@
                         <rect x="10" y="45" width="40" height="5" stroke="black" stroke-width="2"/>
                     </svg>
                     <p class="upload-text">点击或拖拽文件到此处</p>
-                    <p class="upload-hint">支持格式：PDF, DOCX, PPTX, XLSX, MP4, MP3, PNG, JPG, ZIP, RAR 等</p>
+                    <p class="upload-hint" id="uploadHint">支持格式加载中...</p>
+                    <details class="supported-formats">
+                        <summary>查看全部支持格式</summary>
+                        <div class="format-grid" id="formatList"></div>
+                    </details>
                     <input type="file" id="fileInput" class="file-input" accept="*/*">
                 </div>
 
@@ -83,6 +87,35 @@
                     </label>
                 </div>
 
+                <div class="advanced-settings">
+                    <details>
+                        <summary>高级设置</summary>
+                        <div class="advanced-options">
+                            <label class="advanced-option">
+                                <input type="checkbox" id="randomizeName">
+                                <div>
+                                    <div class="option-title">随机化输出文件名</div>
+                                    <div class="option-desc">使用随机字符串重命名下载的文件，进一步隐藏原始信息。</div>
+                                </div>
+                            </label>
+                            <label class="advanced-option">
+                                <input type="checkbox" id="embedSignature" checked>
+                                <div>
+                                    <div class="option-title">嵌入破坏签名</div>
+                                    <div class="option-desc">在文件内部写入不可见签名，增强不可恢复性。</div>
+                                </div>
+                            </label>
+                            <label class="advanced-option">
+                                <input type="checkbox" id="downloadReport">
+                                <div>
+                                    <div class="option-title">导出破坏报告</div>
+                                    <div class="option-desc">生成一份 JSON 报告，记录破坏操作细节。</div>
+                                </div>
+                            </label>
+                        </div>
+                    </details>
+                </div>
+
                 <!-- 操作按钮 -->
                 <div class="action-buttons">
                     <button class="btn btn-secondary" id="resetBtn">重新选择</button>
@@ -106,6 +139,7 @@
                 </svg>
                 <h3 class="success-title">文件已成功破坏！</h3>
                 <p class="success-desc">损坏后的文件已自动下载</p>
+                <div class="report-card" id="reportCard" style="display: none;"></div>
                 <button class="btn btn-primary" id="continueBtn">继续破坏其他文件</button>
             </section>
         </main>
