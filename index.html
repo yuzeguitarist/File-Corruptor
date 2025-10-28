@@ -11,9 +11,24 @@
     <div class="container">
         <!-- 头部标题区 -->
         <header class="header">
+            <!-- 语言切换器 -->
+            <div class="language-switcher" data-language-switcher>
+                <span class="language-label" data-i18n="language.label">语言</span>
+                <div class="language-options">
+                    <button type="button" class="lang-btn" data-lang="zh" data-i18n-attr="aria-label:language.switchToChinese">
+                        <span class="lang-flag" aria-hidden="true">🇨🇳</span>
+                        <span class="lang-text" data-i18n="language.chinese">中文</span>
+                    </button>
+                    <button type="button" class="lang-btn" data-lang="en" data-i18n-attr="aria-label:language.switchToEnglish">
+                        <span class="lang-flag" aria-hidden="true">🇺🇸</span>
+                        <span class="lang-text" data-i18n="language.english">English</span>
+                    </button>
+                </div>
+            </div>
+
             <div class="logo">
                 <!-- 自定义SVG图标 -->
-                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <rect x="8" y="8" width="24" height="24" stroke="black" stroke-width="2"/>
                     <line x1="12" y1="16" x2="28" y2="16" stroke="black" stroke-width="2"/>
                     <line x1="12" y1="20" x2="28" y2="20" stroke="black" stroke-width="2"/>
@@ -21,8 +36,8 @@
                     <line x1="8" y1="8" x2="32" y2="32" stroke="black" stroke-width="2.5"/>
                 </svg>
             </div>
-            <h1 class="title">文件破坏工具</h1>
-            <p class="subtitle">File Corruptor - 安全破坏任何格式文件</p>
+            <h1 class="title" data-i18n="site.name">文件破坏工具</h1>
+            <p class="subtitle" data-i18n="site.subtitle">File Corruptor - 安全破坏任何格式文件</p>
         </header>
 
         <!-- 主要内容区 -->
@@ -30,27 +45,27 @@
             <!-- 文件上传区 -->
             <section class="upload-section">
                 <div class="upload-area" id="uploadArea">
-                    <svg id="uploadIcon" width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg id="uploadIcon" width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M30 10 L30 40 M15 25 L30 10 L45 25" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <rect x="10" y="45" width="40" height="5" stroke="black" stroke-width="2"/>
                     </svg>
-                    <p class="upload-text">点击或拖拽文件到此处</p>
-                    <p class="upload-hint">支持格式：PDF, DOCX, CMD, PS1, LICENSE, DB, SIB, PNG, ZIP 等</p>
-                    <input type="file" id="fileInput" class="file-input" accept="*/*">
+                    <p class="upload-text" data-i18n="upload.prompt">点击或拖拽文件到此处</p>
+                    <p class="upload-hint" data-i18n="upload.supported">支持格式：PDF, DOCX, CMD, PS1, LICENSE, DB, SIB, PNG, ZIP 等</p>
+                    <input type="file" id="fileInput" class="file-input" accept="*/*" aria-describedby="uploadArea">
                 </div>
 
                 <!-- 文件信息显示 -->
                 <div class="file-info" id="fileInfo" style="display: none;">
                     <div class="info-row">
-                        <span class="info-label">文件名：</span>
+                        <span class="info-label" data-i18n="file.labels.name">文件名：</span>
                         <span class="info-value" id="fileName"></span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">文件大小：</span>
+                        <span class="info-label" data-i18n="file.labels.size">文件大小：</span>
                         <span class="info-value" id="fileSize"></span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">文件类型：</span>
+                        <span class="info-label" data-i18n="file.labels.type">文件类型：</span>
                         <span class="info-value" id="fileType"></span>
                     </div>
                 </div>
@@ -58,54 +73,54 @@
 
             <!-- 破坏选项区 -->
             <section class="options-section" id="optionsSection" style="display: none;">
-                <h2 class="section-title">破坏程度</h2>
+                <h2 class="section-title" data-i18n="levels.title">破坏程度</h2>
                 <div class="corruption-levels">
                     <label class="level-option">
                         <input type="radio" name="level" value="light" checked>
                         <div class="level-card">
-                            <div class="level-name">轻度破坏</div>
-                            <div class="level-desc">修改文件头部，提示文件损坏</div>
+                            <div class="level-name" data-i18n="levels.items.light.name">轻度破坏</div>
+                            <div class="level-desc" data-i18n="levels.items.light.description">修改文件头部，提示文件损坏</div>
                         </div>
                     </label>
                     <label class="level-option">
                         <input type="radio" name="level" value="medium">
                         <div class="level-card">
-                            <div class="level-name">中度破坏</div>
-                            <div class="level-desc">修改多处关键位置，无法识别</div>
+                            <div class="level-name" data-i18n="levels.items.medium.name">中度破坏</div>
+                            <div class="level-desc" data-i18n="levels.items.medium.description">修改多处关键位置，无法识别</div>
                         </div>
                     </label>
                     <label class="level-option">
                         <input type="radio" name="level" value="heavy">
                         <div class="level-card">
-                            <div class="level-name">重度破坏</div>
-                            <div class="level-desc">随机修改大量数据，彻底损坏</div>
+                            <div class="level-name" data-i18n="levels.items.heavy.name">重度破坏</div>
+                            <div class="level-desc" data-i18n="levels.items.heavy.description">随机修改大量数据，彻底损坏</div>
                         </div>
                     </label>
                 </div>
 
                 <div class="advanced-settings">
                     <details>
-                        <summary>高级设置</summary>
+                        <summary data-i18n="advanced.summary">高级设置</summary>
                         <div class="advanced-options">
                             <label class="advanced-option">
                                 <input type="checkbox" id="randomizeName">
                                 <div>
-                                    <div class="option-title">随机化输出文件名</div>
-                                    <div class="option-desc">使用随机字符串重命名下载的文件，进一步隐藏原始信息。</div>
+                                    <div class="option-title" data-i18n="advanced.options.randomizeName.title">随机化输出文件名</div>
+                                    <div class="option-desc" data-i18n="advanced.options.randomizeName.description">使用随机字符串重命名下载的文件，进一步隐藏原始信息。</div>
                                 </div>
                             </label>
                             <label class="advanced-option">
                                 <input type="checkbox" id="embedSignature" checked>
                                 <div>
-                                    <div class="option-title">嵌入破坏签名</div>
-                                    <div class="option-desc">在文件内部写入不可见签名，增强不可恢复性。</div>
+                                    <div class="option-title" data-i18n="advanced.options.embedSignature.title">嵌入破坏签名</div>
+                                    <div class="option-desc" data-i18n="advanced.options.embedSignature.description">在文件内部写入不可见签名，增强不可恢复性。</div>
                                 </div>
                             </label>
                             <label class="advanced-option">
                                 <input type="checkbox" id="downloadReport">
                                 <div>
-                                    <div class="option-title">导出破坏报告</div>
-                                    <div class="option-desc">生成一份 JSON 报告，记录破坏操作细节。</div>
+                                    <div class="option-title" data-i18n="advanced.options.downloadReport.title">导出破坏报告</div>
+                                    <div class="option-desc" data-i18n="advanced.options.downloadReport.description">生成一份 JSON 报告，记录破坏操作细节。</div>
                                 </div>
                             </label>
                         </div>
@@ -114,57 +129,63 @@
 
                 <!-- 操作按钮 -->
                 <div class="action-buttons">
-                    <button class="btn btn-secondary" id="resetBtn">重新选择</button>
-                    <button class="btn btn-primary" id="corruptBtn">破坏文件</button>
+                    <button class="btn btn-secondary" id="resetBtn" data-i18n="buttons.reset">重新选择</button>
+                    <button class="btn btn-primary" id="corruptBtn" data-i18n="buttons.corrupt">破坏文件</button>
                 </div>
             </section>
 
             <!-- 处理状态区 -->
             <section class="status-section" id="statusSection" style="display: none;">
                 <div class="status-content">
-                    <div class="spinner"></div>
-                    <p class="status-text" id="statusText">正在处理文件...</p>
+                    <div class="spinner" role="presentation"></div>
+                    <p class="status-text" id="statusText" role="status" aria-live="polite" data-i18n="status.processing">正在处理文件...</p>
                 </div>
             </section>
 
             <!-- 完成提示区 -->
             <section class="success-section" id="successSection" style="display: none;">
-                <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <circle cx="40" cy="40" r="35" stroke="black" stroke-width="2"/>
                     <path d="M25 40 L35 50 L55 30" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <h3 class="success-title">文件已成功破坏！</h3>
-                <p class="success-desc">损坏后的文件已自动下载</p>
+                <h3 class="success-title" data-i18n="success.title">文件已成功破坏！</h3>
+                <p class="success-desc" data-i18n="success.description">损坏后的文件已自动下载</p>
                 <div class="report-card" id="reportCard" style="display: none;"></div>
-                <button class="btn btn-primary" id="continueBtn">继续破坏其他文件</button>
+                <button class="btn btn-primary" id="continueBtn" data-i18n="buttons.continue">继续破坏其他文件</button>
             </section>
         </main>
 
         <!-- 底部说明 -->
         <footer class="footer">
             <div class="warning">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M10 2 L18 17 L2 17 Z" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>
                     <line x1="10" y1="8" x2="10" y2="12" stroke="black" stroke-width="1.5" stroke-linecap="round"/>
                     <circle cx="10" cy="14.5" r="0.5" fill="black"/>
                 </svg>
-                <span>本工具仅供学习测试使用，请勿用于不当用途。破坏后的文件无法恢复，请保留原文件备份。</span>
+                <span data-i18n="footer.warning">本工具仅供学习测试使用，请勿用于不当用途。破坏后的文件无法恢复，请保留原文件备份。</span>
             </div>
             
-            <div class="footer-links">
-                <a href="privacy.html" class="footer-link">隐私政策</a>
-                <span class="footer-divider">|</span>
-                <a href="terms.html" class="footer-link">使用条款</a>
-                <span class="footer-divider">|</span>
-                <a href="disclaimer.html" class="footer-link">免责声明</a>
+            <div class="footer-links" role="navigation" aria-label="Footer">
+                <a href="privacy.html" class="footer-link" data-i18n="footer.links.privacy">隐私政策</a>
+                <span class="footer-divider" aria-hidden="true">|</span>
+                <a href="terms.html" class="footer-link" data-i18n="footer.links.terms">使用条款</a>
+                <span class="footer-divider" aria-hidden="true">|</span>
+                <a href="disclaimer.html" class="footer-link" data-i18n="footer.links.disclaimer">免责声明</a>
             </div>
             
-            <div class="copyright">
+            <div class="copyright" data-i18n="footer.copyright">
                 © 2025 Yuze Pan. All rights reserved.
             </div>
         </footer>
     </div>
 
+    <script src="i18n.js"></script>
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            window.i18n?.init?.();
+        });
+    </script>
     <script src="app.js"></script>
 </body>
 </html>
