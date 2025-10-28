@@ -24,7 +24,7 @@ File Corruptor 是一个完全在浏览器本地运行的文件破坏工具，�
 
 ### ✨ 功能特点
 
-- 🎯 **广泛支持** - 支持 100+ 种文件格式（覆盖文档、媒体、压缩包、代码、镜像等）
+- 🎯 **广泛支持** - 支持 150+ 种文件格式（覆盖文档、媒体、压缩包、代码、数据库、证书、镜像等）
 - 🔒 **隐私安全** - 100% 本地处理，文件不上传服务器
 - 💾 **即时下载** - 自动下载破坏后的文件
 - 🎨 **极简设计** - 黑白配色，Apple 风格界面
@@ -32,6 +32,7 @@ File Corruptor 是一个完全在浏览器本地运行的文件破坏工具，�
 - 📱 **响应式** - 完美支持桌面和移动设备
 - 📊 **破坏报告** - 自动生成详细报告，展示破坏细节
 - 🧩 **高级选项** - 支持随机化文件名、嵌入签名、导出报告
+- 🎲 **可复现破坏** - 所有随机操作使用报告中的种子，可实现完全复现
 
 ### 🚀 快速开始
 
@@ -59,11 +60,14 @@ start index.html # Windows
 4. **破坏文件** - 点击"破坏文件"按钮
 5. **下载文件** - 自动下载损坏后的文件，并查看破坏报告
 
+> 📦 **大小限制**：单个文件最大 500 MB，为保证浏览器稳定性，请尽量避免上传超大文件。
+
 ### ⚙️ 高级选项
 
 - **随机化输出文件名**：使用随机字符串命名损坏后的文件，隐藏原始信息。
 - **嵌入破坏签名**：向文件写入带时间戳和随机种子的签名，进一步破坏结构。
 - **导出破坏报告**：生成 JSON 报告，包含修改字节、执行步骤、耗时等详细信息。
+- **固定随机种子**：报告中会记录本次操作使用的随机种子，可用于复现同样的破坏过程。
 
 ### 🎚️ 破坏程度说明
 
@@ -132,7 +136,7 @@ File Corruptor is a client-side file corruption tool that runs entirely in your 
 
 ### ✨ Features
 
-- 🎯 **Wide Support** - Supports 100+ formats across documents, media, archives, code, and disk images
+- 🎯 **Wide Support** - Supports 150+ formats across documents, media, archives, code, databases, certificates, and disk images
 - 🔒 **Privacy First** - 100% local processing, no server uploads
 - 💾 **Instant Download** - Automatically downloads corrupted files
 - 🎨 **Minimal Design** - Black & white, Apple-inspired interface
@@ -140,6 +144,7 @@ File Corruptor is a client-side file corruption tool that runs entirely in your 
 - 📱 **Responsive** - Works on desktop and mobile
 - 📊 **Corruption Report** - Generates detailed reports showing corruption details
 - 🧩 **Advanced Controls** - Randomize filenames, embed signatures, export reports
+- 🎲 **Reproducible** - All random operations use seeds from reports for perfect reproduction
 
 ### 🚀 Quick Start
 
