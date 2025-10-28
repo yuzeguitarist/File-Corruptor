@@ -49,81 +49,6 @@ body {
     padding-bottom: var(--spacing-lg);
     border-bottom: 2px solid var(--black);
     margin-bottom: var(--spacing-xl);
-    position: relative;
-}
-
-/* 语言切换器 */
-.language-switcher {
-    position: absolute;
-    top: 0;
-    right: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-}
-
-.language-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--gray-500);
-    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.language-options {
-    display: flex;
-    border: 2px solid var(--black);
-    background-color: var(--white);
-}
-
-.lang-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
-    border: none;
-    background-color: transparent;
-    color: var(--black);
-    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: var(--transition);
-    position: relative;
-}
-
-.lang-btn:not(:last-child)::after {
-    content: '';
-    position: absolute;
-    right: 0;
-    top: 25%;
-    height: 50%;
-    width: 2px;
-    background-color: var(--black);
-}
-
-.lang-btn:hover {
-    background-color: var(--gray-100);
-}
-
-.lang-btn.active {
-    background-color: var(--black);
-    color: var(--white);
-}
-
-.lang-btn.active:hover {
-    background-color: var(--gray-500);
-}
-
-.lang-flag {
-    font-size: 16px;
-    line-height: 1;
-}
-
-.lang-text {
-    font-weight: 600;
-    letter-spacing: 0.3px;
 }
 
 .logo {
@@ -603,32 +528,8 @@ body {
 
 /* ==================== 响应式设计 ==================== */
 @media (max-width: 640px) {
-    body {
-        padding: var(--spacing-sm);
-    }
-
     .container {
         padding: var(--spacing-md);
-    }
-
-    .language-switcher {
-        position: static;
-        margin-bottom: var(--spacing-sm);
-        justify-content: center;
-    }
-
-    .language-options {
-        width: 100%;
-        justify-content: center;
-    }
-
-    .lang-btn {
-        flex: 1;
-        justify-content: center;
-    }
-
-    .language-label {
-        display: none;
     }
 
     .title {
@@ -641,7 +542,6 @@ body {
 
     .action-buttons {
         flex-direction: column;
-        gap: var(--spacing-xs);
     }
 
     .btn {
@@ -656,15 +556,6 @@ body {
     .info-value {
         max-width: 100%;
         text-align: left;
-    }
-
-    .footer-links {
-        flex-direction: column;
-        gap: var(--spacing-xs);
-    }
-
-    .footer-divider {
-        display: none;
     }
 }
 

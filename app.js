@@ -1,13 +1,10 @@
 // ==================== 全局变量 ====================
 let selectedFile = null;
 
-// 获取i18n的t函数（安全访问）
-const t = (key, params) => (window.i18n && window.i18n.t) ? window.i18n.t(key, params) : key;
-
 // 支持的文件格式类别
 const FILE_CATEGORIES = {
     documents: {
-        labelKey: 'categories.documents',
+        label: '文档 & 表格',
         strategy: 'text',
         formats: {
             'pdf': 'PDF文档',
@@ -37,7 +34,7 @@ const FILE_CATEGORIES = {
         }
     },
     images: {
-        labelKey: 'categories.images',
+        label: '图片 & 图形',
         strategy: 'media',
         formats: {
             'jpg': '图片文件',
@@ -59,7 +56,7 @@ const FILE_CATEGORIES = {
         }
     },
     videos: {
-        labelKey: 'categories.videos',
+        label: '视频',
         strategy: 'media',
         formats: {
             'mp4': '视频文件',
@@ -77,7 +74,7 @@ const FILE_CATEGORIES = {
         }
     },
     audio: {
-        labelKey: 'categories.audio',
+        label: '音频',
         strategy: 'media',
         formats: {
             'mp3': '音频文件',
@@ -94,7 +91,7 @@ const FILE_CATEGORIES = {
         }
     },
     archives: {
-        labelKey: 'categories.archives',
+        label: '压缩 & 归档',
         strategy: 'archive',
         formats: {
             'zip': 'ZIP压缩包',
@@ -111,7 +108,7 @@ const FILE_CATEGORIES = {
         }
     },
     code: {
-        labelKey: 'categories.code',
+        label: '代码 & 配置',
         strategy: 'text',
         formats: {
             'json': 'JSON数据',
@@ -163,7 +160,7 @@ const FILE_CATEGORIES = {
         }
     },
     system: {
-        labelKey: 'categories.system',
+        label: '系统 & 可执行',
         strategy: 'binary',
         formats: {
             'exe': '可执行文件',
@@ -182,7 +179,7 @@ const FILE_CATEGORIES = {
         }
     },
     database: {
-        labelKey: 'categories.database',
+        label: '数据库',
         strategy: 'binary',
         formats: {
             'db': '数据库文件',
@@ -194,7 +191,7 @@ const FILE_CATEGORIES = {
         }
     },
     certificates: {
-        labelKey: 'categories.certificates',
+        label: '证书 & 密钥',
         strategy: 'text',
         formats: {
             'pem': 'PEM证书',
@@ -208,7 +205,7 @@ const FILE_CATEGORIES = {
         }
     },
     misc: {
-        labelKey: 'categories.misc',
+        label: '其他',
         strategy: 'binary',
         formats: {
             'log': '日志文件',
@@ -222,305 +219,9 @@ const FILE_CATEGORIES = {
     }
 };
 
-const FORMAT_LABEL_TRANSLATIONS = {
-    'PDF文档': 'PDF Document',
-    'Word文档': 'Word Document',
-    'Word模板': 'Word Template',
-    '富文本文件': 'Rich Text File',
-    '文本文件': 'Text File',
-    'Markdown文档': 'Markdown Document',
-    'OpenDocument文档': 'OpenDocument Text',
-    'OpenDocument模板': 'OpenDocument Template',
-    'Pages文档': 'Pages Document',
-    'EPUB电子书': 'EPUB eBook',
-    'MOBI电子书': 'MOBI eBook',
-    'Kindle电子书': 'Kindle eBook',
-    'PowerPoint演示': 'PowerPoint Presentation',
-    'OpenDocument演示': 'OpenDocument Presentation',
-    'Keynote演示': 'Keynote Presentation',
-    'Excel表格': 'Excel Spreadsheet',
-    'Excel宏表格': 'Excel Macro Spreadsheet',
-    'OpenDocument表格': 'OpenDocument Spreadsheet',
-    'CSV表格': 'CSV Spreadsheet',
-    '制表符分隔文本': 'TSV Text File',
-    'Numbers表格': 'Numbers Spreadsheet',
-    '图片文件': 'Image File',
-    '矢量图': 'Vector Graphic',
-    '图标文件': 'Icon File',
-    'TIFF图片': 'TIFF Image',
-    'Photoshop文件': 'Photoshop File',
-    'Illustrator文件': 'Illustrator File',
-    'EPS矢量文件': 'EPS Vector File',
-    'HEIC图片': 'HEIC Image',
-    'RAW原始图片': 'RAW Image',
-    'InDesign文档': 'InDesign Document',
-    '视频文件': 'Video File',
-    '3GP视频': '3GP Video',
-    'MPEG视频': 'MPEG Video',
-    'AVCHD视频': 'AVCHD Video',
-    '音频文件': 'Audio File',
-    'WMA音频': 'WMA Audio',
-    'AIFF音频': 'AIFF Audio',
-    'AMR音频': 'AMR Audio',
-    'MIDI文件': 'MIDI File',
-    'ZIP压缩包': 'ZIP Archive',
-    'RAR压缩包': 'RAR Archive',
-    '7Z压缩包': '7Z Archive',
-    'TAR归档': 'TAR Archive',
-    'GZ压缩文件': 'GZ Archive',
-    'BZ2压缩文件': 'BZ2 Archive',
-    'XZ压缩文件': 'XZ Archive',
-    'ISO镜像': 'ISO Image',
-    'DMG镜像': 'DMG Image',
-    'CAB压缩包': 'CAB Archive',
-    'MusicXML压缩文件': 'MusicXML Archive',
-    'JSON数据': 'JSON Data',
-    'XML文件': 'XML File',
-    'YAML配置': 'YAML Configuration',
-    'INI配置': 'INI Configuration',
-    'CFG配置': 'CFG Configuration',
-    '环境变量文件': 'Environment Variables File',
-    'SQL文件': 'SQL File',
-    'JavaScript文件': 'JavaScript File',
-    'JavaScript模块': 'JavaScript Module',
-    'TypeScript文件': 'TypeScript File',
-    'React组件': 'React Component',
-    'HTML文档': 'HTML Document',
-    'CSS样式': 'CSS Stylesheet',
-    'SCSS样式': 'SCSS Stylesheet',
-    'LESS样式': 'LESS Stylesheet',
-    'Python脚本': 'Python Script',
-    'Java源代码': 'Java Source File',
-    'C源代码': 'C Source File',
-    'C++源代码': 'C++ Source File',
-    'C头文件': 'C Header File',
-    'C++头文件': 'C++ Header File',
-    'C#源代码': 'C# Source File',
-    'Go源代码': 'Go Source File',
-    'Ruby脚本': 'Ruby Script',
-    'PHP脚本': 'PHP Script',
-    'Shell脚本': 'Shell Script',
-    'Bash脚本': 'Bash Script',
-    'Zsh脚本': 'Zsh Script',
-    '批处理脚本': 'Batch Script',
-    'CMD批处理': 'CMD Batch File',
-    'PowerShell脚本': 'PowerShell Script',
-    'VBScript脚本': 'VBScript Script',
-    'Perl脚本': 'Perl Script',
-    'Swift源代码': 'Swift Source File',
-    'Kotlin源代码': 'Kotlin Source File',
-    'Rust源代码': 'Rust Source File',
-    'Lua脚本': 'Lua Script',
-    'R语言脚本': 'R Script',
-    'MATLAB脚本': 'MATLAB Script',
-    'Docker配置': 'Docker Configuration',
-    'Make配置': 'Make Configuration',
-    'Gradle配置': 'Gradle Configuration',
-    'TOML配置': 'TOML Configuration',
-    'Properties配置': 'Properties Configuration',
-    '可执行文件': 'Executable File',
-    '动态链接库': 'Dynamic Library',
-    'Android安装包': 'Android Package',
-    'iOS安装包': 'iOS Package',
-    'Windows安装包': 'Windows Installer',
-    '二进制文件': 'Binary File',
-    '磁盘镜像': 'Disk Image',
-    'macOS应用': 'macOS Application',
-    'Debian包': 'Debian Package',
-    'RPM包': 'RPM Package',
-    '安装包': 'Installer Package',
-    'macOS命令文件': 'macOS Command File',
-    'Windows注册表文件': 'Windows Registry File',
-    '数据库文件': 'Database File',
-    'SQLite数据库': 'SQLite Database',
-    'SQLite3数据库': 'SQLite3 Database',
-    'Access数据库': 'Access Database',
-    'PEM证书': 'PEM Certificate',
-    '密钥文件': 'Key File',
-    '证书文件': 'Certificate File',
-    'PKCS12证书': 'PKCS#12 Certificate',
-    'PFX证书': 'PFX Certificate',
-    '许可证文件': 'License File',
-    '日志文件': 'Log File',
-    '备份文件': 'Backup File',
-    '数据文件': 'Data File',
-    'BT种子': 'BitTorrent File',
-    '日历文件': 'Calendar File',
-    '联系人文件': 'Contact File',
-    'Sibelius记谱文件': 'Sibelius Score File'
-};
-
-const FORMAT_LABELS = {};
-Object.values(FILE_CATEGORIES).forEach((category) => {
-    Object.entries(category.formats).forEach(([extension, zhLabel]) => {
-        FORMAT_LABELS[extension] = {
-            zh: zhLabel,
-            en: FORMAT_LABEL_TRANSLATIONS[zhLabel] || zhLabel
-        };
-    });
-});
-
 const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) => {
     return { ...all, ...category.formats };
 }, {});
-
-function getFormatLabel(extension) {
-    const labels = FORMAT_LABELS[extension];
-    if (!labels) return '';
-    const currentLang = window.i18n && window.i18n.getCurrentLanguage ? window.i18n.getCurrentLanguage() : 'zh';
-    return labels[currentLang] || labels.zh || '';
-}
-
-function getListSeparator() {
-    const lang = window.i18n && window.i18n.getCurrentLanguage ? window.i18n.getCurrentLanguage() : 'zh';
-    return lang === 'zh' ? '、' : ', ';
-}
-
-const STEP_MESSAGES = {
-    'archive.headerMetadata': {
-        zh: '破坏归档文件头部元数据',
-        en: 'Corrupt archive header metadata'
-    },
-    'archive.zipCentralDirectory': {
-        zh: '篡改 ZIP 中央目录标识',
-        en: 'Tamper with ZIP central directory signature'
-    },
-    'archive.rarMagic': {
-        zh: '破坏 RAR 魔数',
-        en: 'Corrupt RAR magic number'
-    },
-    'archive.7zMagic': {
-        zh: '扰乱 7Z 魔数',
-        en: 'Disturb 7Z magic number'
-    },
-    'text.injectHeaderMarker': {
-        zh: '注入破坏标记到文本开头',
-        en: 'Inject corruption marker at text header'
-    },
-    'text.localNoise': {
-        zh: '在文本局部插入随机噪声',
-        en: 'Insert localized random noise into text'
-    },
-    'media.headerDisruption': {
-        zh: '扰乱媒体文件关键头信息',
-        en: 'Disrupt critical media header information'
-    },
-    'media.midNoise': {
-        zh: '注入中部轻量伪影噪声',
-        en: 'Inject light mid-section artifact noise'
-    },
-    'generic.randomHeaderBytes': {
-        zh: '随机篡改文件头部字节',
-        en: 'Randomly alter file header bytes'
-    },
-    'archive.rewriteHeader': {
-        zh: '重写归档文件头与主记录',
-        en: 'Rewrite archive header and main record'
-    },
-    'archive.destroyPkMarkers': {
-        zh: '破坏所有 PK 标识',
-        en: 'Destroy all PK markers'
-    },
-    'archive.disturbCentralDirectory': {
-        zh: '扰乱归档中央目录和结束记录',
-        en: 'Disrupt archive central directory and end records'
-    },
-    'text.explicitBanner': {
-        zh: '注入显式破坏横幅',
-        en: 'Inject explicit corruption banner'
-    },
-    'text.periodicCorrupt': {
-        zh: '周期性篡改文本片段',
-        en: 'Corrupt text segments periodically'
-    },
-    'text.tailCorrupt': {
-        zh: '破坏文本结尾结构',
-        en: 'Damage text tail structure'
-    },
-    'media.containerInfo': {
-        zh: '破坏媒体文件容器信息',
-        en: 'Corrupt media container information'
-    },
-    'media.keyframeSection': {
-        zh: '损坏索引/关键帧片段',
-        en: 'Damage index/keyframe segments'
-    },
-    'media.tailData': {
-        zh: '扰乱尾部媒体数据',
-        en: 'Disturb tail media data'
-    },
-    'generic.intensifyHeader': {
-        zh: '加大对文件头的随机损坏',
-        en: 'Intensify random damage to file header'
-    },
-    'generic.intervalCorrupt': {
-        zh: '按间隔破坏文件主体数据',
-        en: 'Corrupt file body data at intervals'
-    },
-    'archive.fullHeaderDestruction': {
-        zh: '全面破坏归档头部与校验信息',
-        en: 'Devastate archive header and checksum data'
-    },
-    'archive.destroySignatures': {
-        zh: '摧毁常见压缩格式标识',
-        en: 'Destroy common archive format signatures'
-    },
-    'archive.randomHalfRewrite': {
-        zh: '随机重写超过一半的归档内容',
-        en: 'Randomly rewrite over half of archive content'
-    },
-    'text.overwriteHead': {
-        zh: '覆盖文本头并插入破坏横幅',
-        en: 'Overwrite text head and insert corruption banner'
-    },
-    'text.randomRewritePercent': {
-        zh: '随机重写 35% 的文本字节',
-        en: 'Randomly rewrite 35% of text bytes'
-    },
-    'text.blockCorrupt': {
-        zh: '块状破坏全文结构',
-        en: 'Corrupt entire text structure in blocks'
-    },
-    'media.containerHeaderIndex': {
-        zh: '破坏媒体容器头及索引',
-        en: 'Corrupt media container header and index'
-    },
-    'media.blockFrameCorrupt': {
-        zh: '按块破坏音视频帧数据',
-        en: 'Corrupt audio/video frame data in blocks'
-    },
-    'media.randomFortyPercent': {
-        zh: '随机破坏 40% 的媒体字节',
-        en: 'Randomly corrupt 40% of media bytes'
-    },
-    'generic.forceHeader': {
-        zh: '强力破坏文件头部',
-        en: 'Aggressively corrupt file header'
-    },
-    'generic.randomThirtyPercent': {
-        zh: '随机破坏 30% 的文件内容',
-        en: 'Randomly corrupt 30% of file content'
-    },
-    'generic.highFrequencyCorrupt': {
-        zh: '高频率破坏整段数据',
-        en: 'Apply high-frequency corruption across data'
-    },
-    'signature.skipSmall': {
-        zh: '文件过小，跳过签名嵌入',
-        en: 'File too small, skip signature embedding'
-    },
-    'signature.embed': {
-        zh: '嵌入破坏签名信息以强化不可恢复性',
-        en: 'Embed corruption signature to strengthen irrecoverability'
-    }
-};
-
-function getStepMessage(key) {
-    const entry = STEP_MESSAGES[key];
-    if (!entry) return key;
-    const lang = window.i18n && window.i18n.getCurrentLanguage ? window.i18n.getCurrentLanguage() : 'zh';
-    return entry[lang] || entry.zh;
-}
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
 
@@ -544,52 +245,6 @@ const downloadReportCheckbox = document.getElementById('downloadReport');
 const embedSignatureCheckbox = document.getElementById('embedSignature');
 
 let lastCorruptionReport = null;
-let currentStatusKey = 'status.processing';
-let currentStatusParams = {};
-let browserCompatible = true;
-
-function setStatus(key, params = {}) {
-    currentStatusKey = key;
-    currentStatusParams = params;
-    if (statusText) {
-        statusText.textContent = t(key, params);
-    }
-}
-
-function updateCorruptButtonState() {
-    if (!corruptBtn) return;
-    if (browserCompatible) {
-        corruptBtn.disabled = false;
-        corruptBtn.textContent = t('buttons.corrupt');
-    } else {
-        corruptBtn.disabled = true;
-        corruptBtn.textContent = t('browser.incompatibleButton');
-    }
-}
-
-setStatus('status.processing');
-updateCorruptButtonState();
-
-// 监听语言切换事件
-document.addEventListener('languageChanged', () => {
-    // 更新状态文本
-    if (statusSection.style.display === 'block' && statusText) {
-        setStatus(currentStatusKey, currentStatusParams);
-    }
-    
-    // 更新文件信息
-    if (fileInfo.style.display === 'block') {
-        updateFileInfoUI();
-    }
-    
-    // 更新报告（如果存在）
-    if (lastCorruptionReport && reportCard.style.display === 'block') {
-        renderReport(lastCorruptionReport);
-    }
-    
-    // 更新浏览器兼容性检查
-    updateCorruptButtonState();
-});
 
 // ==================== 文件上传处理 ====================
 
@@ -638,15 +293,12 @@ uploadArea.addEventListener('drop', (e) => {
  */
 function handleFileSelect(file) {
     if (!file) {
-        console.error(t('errors.noFile'));
+        console.error('没有文件被选择');
         return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
-        showAlert(t('errors.fileTooBig', {
-            current: formatFileSize(file.size),
-            max: formatFileSize(MAX_FILE_SIZE)
-        }));
+        showAlert(`文件过大！\n\n当前文件：${formatFileSize(file.size)}\n最大限制：${formatFileSize(MAX_FILE_SIZE)}\n\n请选择较小的文件。`);
         fileInput.value = '';
         return;
     }
@@ -654,7 +306,7 @@ function handleFileSelect(file) {
     const extension = extractExtension(file.name);
 
     if (!extension) {
-        showAlert(t('errors.noExtension'));
+        showAlert('无法识别文件扩展名。\n\n请确保文件有正确的扩展名（如 .txt, .pdf 等）。');
         fileInput.value = '';
         return;
     }
@@ -664,10 +316,7 @@ function handleFileSelect(file) {
         uploadArea.style.borderColor = 'var(--gray-400)';
         uploadArea.style.opacity = '0.6';
 
-        showAlert(t('errors.unsupportedFormat', {
-            ext: extension,
-            formats: getSupportedFormatsSummary()
-        }));
+        showAlert(`不支持的文件格式：.${extension}\n\n支持的格式包括：\n${getSupportedFormatsSummary()}\n\n请选择支持的文件格式。`);
 
         setTimeout(() => {
             uploadArea.style.backgroundColor = '';
@@ -680,24 +329,18 @@ function handleFileSelect(file) {
     }
 
     selectedFile = file;
+    const categoryKey = getFileCategory(extension);
+    const categoryLabel = getCategoryLabel(categoryKey);
 
-    updateFileInfoUI();
+    fileName.textContent = file.name;
+    fileSize.textContent = formatFileSize(file.size);
+    const typeLabel = SUPPORTED_FORMATS[extension] || file.type || '未知类型';
+    fileType.textContent = categoryLabel ? `${typeLabel} · ${categoryLabel}` : typeLabel;
 
     fileInfo.style.display = 'block';
     optionsSection.style.display = 'block';
 
     uploadArea.style.display = 'none';
-}
-
-function updateFileInfoUI() {
-    if (!selectedFile) return;
-    fileName.textContent = selectedFile.name;
-    fileSize.textContent = formatFileSize(selectedFile.size);
-    const extension = extractExtension(selectedFile.name);
-    const categoryKey = getFileCategory(extension);
-    const categoryLabel = getCategoryLabel(categoryKey);
-    const typeLabel = getFormatLabel(extension) || selectedFile.type || t('file.messages.unknownType');
-    fileType.textContent = categoryLabel ? `${typeLabel} · ${categoryLabel}` : typeLabel;
 }
 
 /**
@@ -758,7 +401,7 @@ corruptBtn.addEventListener('click', async () => {
         optionsSection.style.display = 'none';
         fileInfo.style.display = 'none';
         statusSection.style.display = 'block';
-        setStatus('status.corrupting');
+        statusText.textContent = '正在破坏文件...';
         
         await new Promise(resolve => setTimeout(resolve, 800));
         
@@ -767,16 +410,16 @@ corruptBtn.addEventListener('click', async () => {
         statusSection.style.display = 'none';
         successSection.style.display = 'block';
     } catch (error) {
-        console.error('File corruption failed:', error);
+        console.error('文件破坏失败:', error);
         
-        let errorMessage = t('errors.corruptionFailed');
+        let errorMessage = '文件破坏失败，请重试。';
         
         if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-            errorMessage = t('errors.quotaExceeded');
+            errorMessage = '内存不足！文件过大，浏览器无法处理。\n\n请尝试使用较小的文件。';
         } else if (error instanceof TypeError) {
-            errorMessage = t('errors.fileReadError');
+            errorMessage = '文件读取错误！请确保文件完整且未损坏。';
         } else if (error.message) {
-            errorMessage = t('errors.default', { message: error.message });
+            errorMessage = `错误：${error.message}`;
         }
         
         showAlert(errorMessage);
@@ -844,7 +487,7 @@ async function corruptFile(file, level, options) {
         corruptionResult.steps.push(signatureResult.description);
     }
 
-    setStatus('status.preparing');
+    statusText.textContent = '破坏完成，正在准备下载...';
     const downloadName = downloadCorruptedFile(uint8Array, file.name, options);
     const report = buildCorruptionReport({
         file,
@@ -1131,9 +774,7 @@ function getFileCategory(extension) {
 }
 
 function getCategoryLabel(categoryKey) {
-    if (!categoryKey) return '';
-    const labelKey = FILE_CATEGORIES[categoryKey]?.labelKey;
-    return labelKey ? t(labelKey) : '';
+    return categoryKey ? FILE_CATEGORIES[categoryKey]?.label ?? '' : '';
 }
 
 function getStrategyForCategory(categoryKey) {
@@ -1333,27 +974,26 @@ function renderReport(report) {
 
     const title = document.createElement('h4');
     title.className = 'report-title';
-    title.textContent = t('report.title');
+    title.textContent = '破坏报告';
     reportCard.appendChild(title);
 
     const metaList = document.createElement('ul');
     metaList.className = 'report-meta';
 
     const optionsUsed = [];
-    if (report.options?.randomizeName) optionsUsed.push(t('advanced.options.randomizeName.title'));
-    if (report.options?.embedSignature) optionsUsed.push(t('advanced.options.embedSignature.title'));
-    if (report.options?.downloadReport) optionsUsed.push(t('advanced.options.downloadReport.title'));
+    if (report.options?.randomizeName) optionsUsed.push('随机化文件名');
+    if (report.options?.embedSignature) optionsUsed.push('嵌入破坏签名');
+    if (report.options?.downloadReport) optionsUsed.push('导出报告');
 
-    const separator = getListSeparator();
     const rows = [
-        [t('report.labels.originalFile'), `${report.originalName}（${report.formattedSize}）`],
-        [t('report.labels.outputFile'), report.downloadName],
-        [t('report.labels.level'), report.levelLabel],
-        [t('report.labels.category'), report.category],
-        [t('report.labels.bytesModified'), `${report.bytesModified.toLocaleString()}（${report.modifiedRatio}%）`],
-        [t('report.labels.duration'), `${Math.round(report.duration)} ms`],
-        [t('report.labels.seed'), report.seed],
-        [t('report.labels.settings'), optionsUsed.length ? optionsUsed.join(separator) : t('report.settings.default')]
+        ['原文件', `${report.originalName}（${report.formattedSize}）`],
+        ['输出文件', report.downloadName],
+        ['破坏程度', report.levelLabel],
+        ['所属类别', report.category],
+        ['修改字节', `${report.bytesModified.toLocaleString()}（${report.modifiedRatio}%）`],
+        ['耗时', `${Math.round(report.duration)} ms`],
+        ['随机种子', report.seed],
+        ['高级设置', optionsUsed.length ? optionsUsed.join('、') : '默认设置']
     ];
 
     rows.forEach(([label, value]) => {
@@ -1364,19 +1004,17 @@ function renderReport(report) {
 
     reportCard.appendChild(metaList);
 
-    const stepKeys = report.stepKeys || report.steps || [];
-    if (stepKeys.length) {
+    if (report.steps?.length) {
         const stepsTitle = document.createElement('div');
         stepsTitle.className = 'report-steps-title';
-        stepsTitle.textContent = t('report.steps');
+        stepsTitle.textContent = '执行步骤';
         reportCard.appendChild(stepsTitle);
 
         const stepsList = document.createElement('ol');
         stepsList.className = 'report-steps';
-        stepKeys.forEach((step) => {
-            const key = typeof step === 'string' && STEP_MESSAGES[step] ? step : null;
+        report.steps.forEach((step) => {
             const stepItem = document.createElement('li');
-            stepItem.textContent = key ? getStepMessage(key) : step;
+            stepItem.textContent = step;
             stepsList.appendChild(stepItem);
         });
         reportCard.appendChild(stepsList);
@@ -1399,22 +1037,18 @@ function downloadReportJSON(report) {
 
 function getSupportedFormatsSummary() {
     return Object.values(FILE_CATEGORIES)
-        .map((category) => {
-            const label = t(category.labelKey);
-            const formats = Object.keys(category.formats).map((ext) => '.' + ext).join(', ');
-            return `${label}: ${formats}`;
-        })
+        .map((category) => `${category.label}: ${Object.keys(category.formats).map((ext) => '.' + ext).join(', ')}`)
         .join('\n');
 }
 
 
 function translateLevel(level) {
     const mapping = {
-        light: 'level.light',
-        medium: 'level.medium',
-        heavy: 'level.heavy'
+        light: '轻度',
+        medium: '中度',
+        heavy: '重度'
     };
-    return t(mapping[level] || level);
+    return mapping[level] || level;
 }
 
 // ==================== 应用重置 ====================
@@ -1465,7 +1099,7 @@ function checkBrowserCompatibility() {
     
     if (unsupported.length > 0) {
         const missing = unsupported.map(([name]) => name).join(', ');
-        showAlert(t('errors.browserIncompatible', { features: missing }));
+        showAlert(`您的浏览器不支持以下功能：${missing}\n\n请使用现代浏览器（如 Chrome、Firefox、Safari、Edge）访问本工具。`);
         return false;
     }
     
@@ -1476,15 +1110,15 @@ function checkBrowserCompatibility() {
 
 if (typeof document !== 'undefined') {
     if (!checkBrowserCompatibility()) {
-        console.error('Browser compatibility check failed');
-        browserCompatible = false;
-        updateCorruptButtonState();
+        console.error('浏览器兼容性检查失败');
+        if (corruptBtn) {
+            corruptBtn.disabled = true;
+            corruptBtn.textContent = '浏览器不兼容';
+        }
     } else {
-        browserCompatible = true;
-        updateCorruptButtonState();
-        console.log(t('console.loaded'));
-        console.log(t('console.supportedLevels'));
-        console.log(t('console.supportedFormats', { count: Object.keys(FORMAT_LABELS).length }));
-        console.log(t('console.warning'));
+        console.log('文件破坏工具已加载');
+        console.log('支持的破坏程度：轻度、中度、重度');
+        console.log(`支持 ${Object.keys(SUPPORTED_FORMATS).length} 种文件格式`);
+        console.log('⚠️ 请勿用于不当用途');
     }
 }
