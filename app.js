@@ -725,14 +725,14 @@ function downloadCorruptedFile(data, originalName, options = {}) {
 
     const nameParts = originalName.split('.');
     const extension = nameParts.length > 1 ? nameParts.pop() : '';
-    const baseName = nameParts.join('.') || 'corrupted_file';
+    const baseName = nameParts.join('.') || 'file';
 
     let downloadName;
     if (options.randomizeName) {
-        const randomBase = `corrupted_${generateRandomFileName()}`;
+        const randomBase = generateRandomFileName();
         downloadName = extension ? `${randomBase}.${extension}` : randomBase;
     } else {
-        downloadName = extension ? `${baseName}_corrupted.${extension}` : `${baseName}_corrupted`;
+        downloadName = extension ? `${baseName}.${extension}` : baseName;
     }
 
     a.download = downloadName;
