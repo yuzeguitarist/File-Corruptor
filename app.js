@@ -86,7 +86,8 @@ const FILE_CATEGORIES = {
             'wma': 'WMA音频',
             'aiff': 'AIFF音频',
             'amr': 'AMR音频',
-            'mid': 'MIDI文件'
+            'mid': 'MIDI文件',
+            'midi': 'MIDI文件'
         }
     },
     archives: {
@@ -102,7 +103,8 @@ const FILE_CATEGORIES = {
             'xz': 'XZ压缩文件',
             'iso': 'ISO镜像',
             'dmg': 'DMG镜像',
-            'cab': 'CAB压缩包'
+            'cab': 'CAB压缩包',
+            'mxl': 'MusicXML压缩文件'
         }
     },
     code: {
@@ -137,11 +139,24 @@ const FILE_CATEGORIES = {
             'rb': 'Ruby脚本',
             'php': 'PHP脚本',
             'sh': 'Shell脚本',
+            'bash': 'Bash脚本',
+            'zsh': 'Zsh脚本',
             'bat': '批处理脚本',
+            'cmd': 'CMD批处理',
+            'ps1': 'PowerShell脚本',
+            'vbs': 'VBScript脚本',
             'pl': 'Perl脚本',
             'swift': 'Swift源代码',
             'kt': 'Kotlin源代码',
-            'rs': 'Rust源代码'
+            'rs': 'Rust源代码',
+            'lua': 'Lua脚本',
+            'r': 'R语言脚本',
+            'm': 'MATLAB脚本',
+            'dockerfile': 'Docker配置',
+            'makefile': 'Make配置',
+            'gradle': 'Gradle配置',
+            'toml': 'TOML配置',
+            'properties': 'Properties配置'
         }
     },
     system: {
@@ -158,7 +173,35 @@ const FILE_CATEGORIES = {
             'app': 'macOS应用',
             'deb': 'Debian包',
             'rpm': 'RPM包',
-            'pkg': '安装包'
+            'pkg': '安装包',
+            'command': 'macOS命令文件',
+            'reg': 'Windows注册表文件'
+        }
+    },
+    database: {
+        label: '数据库',
+        strategy: 'binary',
+        formats: {
+            'db': '数据库文件',
+            'sqlite': 'SQLite数据库',
+            'sqlite3': 'SQLite3数据库',
+            'db3': 'SQLite3数据库',
+            'mdb': 'Access数据库',
+            'accdb': 'Access数据库'
+        }
+    },
+    certificates: {
+        label: '证书 & 密钥',
+        strategy: 'text',
+        formats: {
+            'pem': 'PEM证书',
+            'key': '密钥文件',
+            'crt': '证书文件',
+            'cer': '证书文件',
+            'p12': 'PKCS12证书',
+            'pfx': 'PFX证书',
+            'license': '许可证文件',
+            'lic': '许可证文件'
         }
     },
     misc: {
@@ -169,7 +212,9 @@ const FILE_CATEGORIES = {
             'bak': '备份文件',
             'dat': '数据文件',
             'torrent': 'BT种子',
-            'ics': '日历文件'
+            'ics': '日历文件',
+            'vcf': '联系人文件',
+            'sib': 'Sibelius记谱文件'
         }
     }
 };
@@ -177,6 +222,8 @@ const FILE_CATEGORIES = {
 const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) => {
     return { ...all, ...category.formats };
 }, {});
+
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
 
 // ==================== DOM 元素 ====================
 const uploadArea = document.getElementById('uploadArea');
@@ -216,7 +263,7 @@ fileInput.addEventListener('change', (e) => {
     if (file) {
         handleFileSelect(file);
     }
-}, { once: false });
+});
 
 // 拖拽上传处理
 uploadArea.addEventListener('dragover', (e) => {
@@ -245,25 +292,39 @@ uploadArea.addEventListener('drop', (e) => {
  * @param {File} file - 用户选择的文件
  */
 function handleFileSelect(file) {
-    // 获取文件扩展名
-    const extension = file.name.split('.').pop().toLowerCase();
+    if (!file) {
+        console.error('没有文件被选择');
+        return;
+    }
 
-    // 检查文件格式是否支持
+    if (file.size > MAX_FILE_SIZE) {
+        showAlert(`文件过大！\n\n当前文件：${formatFileSize(file.size)}\n最大限制：${formatFileSize(MAX_FILE_SIZE)}\n\n请选择较小的文件。`);
+        fileInput.value = '';
+        return;
+    }
+
+    const extension = extractExtension(file.name);
+
+    if (!extension) {
+        showAlert('无法识别文件扩展名。\n\n请确保文件有正确的扩展名（如 .txt, .pdf 等）。');
+        fileInput.value = '';
+        return;
+    }
+
     if (!SUPPORTED_FORMATS[extension]) {
-        // 显示不支持的提示
         uploadArea.style.backgroundColor = 'var(--gray-200)';
         uploadArea.style.borderColor = 'var(--gray-400)';
         uploadArea.style.opacity = '0.6';
 
-        alert(`不支持的文件格式：.${extension}\n\n支持的格式包括：\n${getSupportedFormatsSummary()}\n\n请选择支持的文件格式。`);
+        showAlert(`不支持的文件格式：.${extension}\n\n支持的格式包括：\n${getSupportedFormatsSummary()}\n\n请选择支持的文件格式。`);
 
-        // 重置上传区域样式
         setTimeout(() => {
             uploadArea.style.backgroundColor = '';
             uploadArea.style.borderColor = '';
             uploadArea.style.opacity = '';
         }, 2000);
 
+        fileInput.value = '';
         return;
     }
 
@@ -271,17 +332,14 @@ function handleFileSelect(file) {
     const categoryKey = getFileCategory(extension);
     const categoryLabel = getCategoryLabel(categoryKey);
 
-    // 显示文件信息
     fileName.textContent = file.name;
     fileSize.textContent = formatFileSize(file.size);
     const typeLabel = SUPPORTED_FORMATS[extension] || file.type || '未知类型';
     fileType.textContent = categoryLabel ? `${typeLabel} · ${categoryLabel}` : typeLabel;
 
-    // 显示文件信息和选项区域
     fileInfo.style.display = 'block';
     optionsSection.style.display = 'block';
 
-    // 隐藏上传区域
     uploadArea.style.display = 'none';
 }
 
@@ -304,6 +362,23 @@ function formatFileSize(bytes) {
     return Math.round(size * 100) / 100 + ' ' + sizes[exponent];
 }
 
+function extractExtension(filename) {
+    if (!filename || typeof filename !== 'string') return '';
+    const lastDotIndex = filename.lastIndexOf('.');
+    if (lastDotIndex <= 0 || lastDotIndex === filename.length - 1) {
+        return '';
+    }
+    return filename.slice(lastDotIndex + 1).toLowerCase();
+}
+
+function showAlert(message) {
+    if (typeof alert === 'function') {
+        alert(message);
+    } else {
+        console.warn('[ALERT]', message);
+    }
+}
+
 // ==================== 按钮事件处理 ====================
 
 /**
@@ -319,30 +394,38 @@ resetBtn.addEventListener('click', () => {
 corruptBtn.addEventListener('click', async () => {
     if (!selectedFile) return;
     
-    // 获取选中的破坏程度和高级设置
-    const level = document.querySelector('input[name="level"]:checked').value;
-    const options = getAdvancedOptions();
-
-    // 显示处理状态
-    optionsSection.style.display = 'none';
-    fileInfo.style.display = 'none';
-    statusSection.style.display = 'block';
-    statusText.textContent = '正在破坏文件...';
-    
-    // 模拟处理延迟，让用户看到处理过程
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
     try {
-        // 执行文件破坏
+        const level = document.querySelector('input[name="level"]:checked').value;
+        const options = getAdvancedOptions();
+
+        optionsSection.style.display = 'none';
+        fileInfo.style.display = 'none';
+        statusSection.style.display = 'block';
+        statusText.textContent = '正在破坏文件...';
+        
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
         await corruptFile(selectedFile, level, options);
 
-        // 显示成功界面
         statusSection.style.display = 'none';
         successSection.style.display = 'block';
     } catch (error) {
         console.error('文件破坏失败:', error);
-        alert('文件破坏失败，请重试');
-        resetApp();
+        
+        let errorMessage = '文件破坏失败，请重试。';
+        
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+            errorMessage = '内存不足！文件过大，浏览器无法处理。\n\n请尝试使用较小的文件。';
+        } else if (error instanceof TypeError) {
+            errorMessage = '文件读取错误！请确保文件完整且未损坏。';
+        } else if (error.message) {
+            errorMessage = `错误：${error.message}`;
+        }
+        
+        showAlert(errorMessage);
+        statusSection.style.display = 'none';
+        optionsSection.style.display = 'block';
+        fileInfo.style.display = 'block';
     }
 });
 
@@ -368,18 +451,20 @@ async function corruptFile(file, level, options) {
     const uint8Array = new Uint8Array(arrayBuffer);
 
     // 获取文件扩展名及类别
-    const extension = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+    const extension = extractExtension(file.name);
     const categoryKey = getFileCategory(extension);
     const strategy = getStrategyForCategory(categoryKey);
 
     const randomSeed = generateSeed();
+    const random = createRandomGenerator(randomSeed);
     const corruptionContext = {
         fileSize: uint8Array.length,
         extension,
         categoryKey,
         strategy,
         seed: randomSeed,
-        options
+        options,
+        random
     };
 
     let corruptionResult;
@@ -427,26 +512,26 @@ async function corruptFile(file, level, options) {
  * 轻度破坏 - 修改文件头部
  * 破坏文件的魔数（Magic Number），使文件无法被识别
  * @param {Uint8Array} data - 文件数据
- * @param {string} extension - 文件扩展名
+ * @param {Object} context - 破坏上下文
  */
 function corruptLight(data, context) {
-    const { extension, strategy } = context;
+    const { extension, strategy, random } = context;
     const fileSize = data.length;
     const steps = [];
     let bytesModified = 0;
 
     if (strategy === 'archive') {
-        bytesModified += mutateHeader(data, 32);
+        bytesModified += mutateHeader(data, 32, 1, random);
         steps.push('破坏归档文件头部元数据');
 
         if (extension === 'zip') {
-            bytesModified += corruptSignature(data, [0x50, 0x4B, 0x01, 0x02]);
+            bytesModified += corruptSignature(data, [0x50, 0x4B, 0x01, 0x02], 1, random);
             steps.push('篡改 ZIP 中央目录标识');
         } else if (extension === 'rar') {
-            bytesModified += corruptSignature(data, [0x52, 0x61, 0x72, 0x21]);
+            bytesModified += corruptSignature(data, [0x52, 0x61, 0x72, 0x21], 1, random);
             steps.push('破坏 RAR 魔数');
         } else if (extension === '7z') {
-            bytesModified += corruptSignature(data, [0x37, 0x7A, 0xBC, 0xAF]);
+            bytesModified += corruptSignature(data, [0x37, 0x7A, 0xBC, 0xAF], 1, random);
             steps.push('扰乱 7Z 魔数');
         }
     } else if (strategy === 'text') {
@@ -456,21 +541,21 @@ function corruptLight(data, context) {
         steps.push('注入破坏标记到文本开头');
 
         if (fileSize > 64) {
-            bytesModified += randomizeRange(data, 32, Math.min(128, fileSize), 0.4);
+            bytesModified += randomizeRange(data, 32, Math.min(128, fileSize), 0.4, random);
             steps.push('在文本局部插入随机噪声');
         }
     } else if (strategy === 'media') {
-        bytesModified += mutateHeader(data, 48, 0.8);
+        bytesModified += mutateHeader(data, 48, 0.8, random);
         steps.push('扰乱媒体文件关键头信息');
 
         if (fileSize > 2048) {
             const midStart = Math.max(0, Math.floor(fileSize / 2) - 64);
-            bytesModified += randomizeRange(data, midStart, Math.min(fileSize, midStart + 128), 0.35);
+            bytesModified += randomizeRange(data, midStart, Math.min(fileSize, midStart + 128), 0.35, random);
             steps.push('注入中部轻量伪影噪声');
         }
     } else {
         const corruptLength = Math.min(16, fileSize);
-        bytesModified += randomizeRange(data, 0, corruptLength);
+        bytesModified += randomizeRange(data, 0, corruptLength, 1, random);
         steps.push('随机篡改文件头部字节');
     }
 
@@ -487,22 +572,22 @@ function corruptLight(data, context) {
  * @param {string} extension - 文件扩展名
  */
 function corruptMedium(data, context) {
-    const { extension, strategy } = context;
+    const { extension, strategy, random } = context;
     const fileSize = data.length;
     const steps = [];
     let bytesModified = 0;
 
     if (strategy === 'archive') {
-        bytesModified += mutateHeader(data, 64);
+        bytesModified += mutateHeader(data, 64, 1, random);
         steps.push('重写归档文件头与主记录');
 
         if (extension === 'zip') {
-            bytesModified += corruptSignature(data, [0x50, 0x4B]);
+            bytesModified += corruptSignature(data, [0x50, 0x4B], 1, random);
             steps.push('破坏所有 PK 标识');
         }
 
         const tailLength = Math.min(256, fileSize);
-        bytesModified += randomizeRange(data, fileSize - tailLength, fileSize, 0.65);
+        bytesModified += randomizeRange(data, fileSize - tailLength, fileSize, 0.65, random);
         steps.push('扰乱归档中央目录和结束记录');
     } else if (strategy === 'text') {
         const encoder = new TextEncoder();
@@ -512,32 +597,32 @@ function corruptMedium(data, context) {
 
         const interval = Math.max(128, Math.floor(fileSize / 12));
         for (let i = interval; i < fileSize; i += interval) {
-            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + 32), 0.85);
+            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + 32), 0.85, random);
         }
         steps.push('周期性篡改文本片段');
 
-        bytesModified += randomizeRange(data, Math.max(0, fileSize - 512), fileSize, 0.6);
+        bytesModified += randomizeRange(data, Math.max(0, fileSize - 512), fileSize, 0.6, random);
         steps.push('破坏文本结尾结构');
     } else if (strategy === 'media') {
-        bytesModified += mutateHeader(data, 96);
+        bytesModified += mutateHeader(data, 96, 1, random);
         steps.push('破坏媒体文件容器信息');
 
         const segmentSize = Math.min(2048, Math.floor(fileSize / 6));
         if (segmentSize > 0) {
-            bytesModified += randomizeRange(data, segmentSize, Math.min(fileSize, segmentSize * 2), 0.75);
+            bytesModified += randomizeRange(data, segmentSize, Math.min(fileSize, segmentSize * 2), 0.75, random);
             steps.push('损坏索引/关键帧片段');
         }
 
-        bytesModified += randomizeRange(data, Math.max(0, fileSize - 2048), fileSize, 0.5);
+        bytesModified += randomizeRange(data, Math.max(0, fileSize - 2048), fileSize, 0.5, random);
         steps.push('扰乱尾部媒体数据');
     } else {
-        bytesModified += mutateHeader(data, 48);
+        bytesModified += mutateHeader(data, 48, 1, random);
         steps.push('加大对文件头的随机损坏');
 
         const interval = 1024;
         const corruptSize = 24;
         for (let i = interval; i < fileSize; i += interval) {
-            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + corruptSize));
+            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + corruptSize), 1, random);
         }
         steps.push('按间隔破坏文件主体数据');
     }
@@ -555,22 +640,22 @@ function corruptMedium(data, context) {
  * @param {string} extension - 文件扩展名
  */
 function corruptHeavy(data, context) {
-    const { extension, strategy } = context;
+    const { extension, strategy, random } = context;
     const fileSize = data.length;
     const steps = [];
     let bytesModified = 0;
 
     if (strategy === 'archive') {
-        bytesModified += mutateHeader(data, 160);
+        bytesModified += mutateHeader(data, 160, 1, random);
         steps.push('全面破坏归档头部与校验信息');
 
-        bytesModified += corruptSignature(data, [0x50, 0x4B]);
-        bytesModified += corruptSignature(data, [0x37, 0x7A]);
-        bytesModified += corruptSignature(data, [0x52, 0x61]);
+        bytesModified += corruptSignature(data, [0x50, 0x4B], 1, random);
+        bytesModified += corruptSignature(data, [0x37, 0x7A], 1, random);
+        bytesModified += corruptSignature(data, [0x52, 0x61], 1, random);
         steps.push('摧毁常见压缩格式标识');
 
         const totalCorrupt = Math.floor(fileSize * 0.55);
-        bytesModified += randomizeRandomPositions(data, totalCorrupt);
+        bytesModified += randomizeRandomPositions(data, totalCorrupt, random);
         steps.push('随机重写超过一半的归档内容');
     } else if (strategy === 'text') {
         const encoder = new TextEncoder();
@@ -579,40 +664,40 @@ function corruptHeavy(data, context) {
         steps.push('覆盖文本头并插入破坏横幅');
 
         const totalCorrupt = Math.floor(fileSize * 0.35);
-        bytesModified += randomizeRandomPositions(data, totalCorrupt);
+        bytesModified += randomizeRandomPositions(data, totalCorrupt, random);
         steps.push('随机重写 35% 的文本字节');
 
         const interval = 256;
         for (let i = interval; i < fileSize; i += interval) {
-            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + 64), 0.9);
+            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + 64), 0.9, random);
         }
         steps.push('块状破坏全文结构');
     } else if (strategy === 'media') {
-        bytesModified += mutateHeader(data, 160);
+        bytesModified += mutateHeader(data, 160, 1, random);
         steps.push('破坏媒体容器头及索引');
 
         const blockSize = Math.max(1024, Math.floor(fileSize / 10));
         for (let i = 0; i < fileSize; i += blockSize) {
-            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + Math.floor(blockSize / 2)), 0.85);
+            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + Math.floor(blockSize / 2)), 0.85, random);
         }
         steps.push('按块破坏音视频帧数据');
 
         const randomCorrupt = Math.floor(fileSize * 0.4);
-        bytesModified += randomizeRandomPositions(data, randomCorrupt);
+        bytesModified += randomizeRandomPositions(data, randomCorrupt, random);
         steps.push('随机破坏 40% 的媒体字节');
     } else {
-        bytesModified += mutateHeader(data, 96);
+        bytesModified += mutateHeader(data, 96, 1, random);
         steps.push('强力破坏文件头部');
 
         const corruptRatio = 0.3;
         const totalCorrupt = Math.floor(fileSize * corruptRatio);
-        bytesModified += randomizeRandomPositions(data, totalCorrupt);
+        bytesModified += randomizeRandomPositions(data, totalCorrupt, random);
         steps.push('随机破坏 30% 的文件内容');
 
         const interval = 512;
         const corruptSize = 48;
         for (let i = interval; i < fileSize; i += interval) {
-            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + corruptSize));
+            bytesModified += randomizeRange(data, i, Math.min(fileSize, i + corruptSize), 1, random);
         }
         steps.push('高频率破坏整段数据');
     }
@@ -703,6 +788,14 @@ function generateSeed() {
     return Math.floor(Math.random() * 1_000_000_000);
 }
 
+function createRandomGenerator(seed) {
+    let state = seed;
+    return function() {
+        state = (state * 1664525 + 1013904223) >>> 0;
+        return state / 0x100000000;
+    };
+}
+
 function generateRandomFileName() {
     if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
         const array = new Uint8Array(8);
@@ -712,14 +805,15 @@ function generateRandomFileName() {
     return Math.random().toString(16).slice(2, 10);
 }
 
-function mutateHeader(data, length, probability = 1) {
-    return randomizeRange(data, 0, Math.min(length, data.length), probability);
+function mutateHeader(data, length, probability = 1, rng = Math.random) {
+    return randomizeRange(data, 0, Math.min(length, data.length), probability, rng);
 }
 
-function corruptSignature(data, signature, probability = 1) {
+function corruptSignature(data, signature, probability = 1, rng = Math.random) {
     if (!Array.isArray(signature) || signature.length === 0) return 0;
     let modified = 0;
     const sigLength = signature.length;
+    const chance = Math.max(0, Math.min(probability, 1));
 
     for (let i = 0; i <= data.length - sigLength; i++) {
         let matched = true;
@@ -732,8 +826,8 @@ function corruptSignature(data, signature, probability = 1) {
 
         if (matched) {
             for (let j = 0; j < sigLength; j++) {
-                if (Math.random() <= probability) {
-                    data[i + j] = getRandomByte();
+                if (rng() <= chance) {
+                    data[i + j] = getRandomByte(rng);
                     modified++;
                 }
             }
@@ -743,15 +837,16 @@ function corruptSignature(data, signature, probability = 1) {
     return modified;
 }
 
-function randomizeRange(data, start, end, probability = 1) {
+function randomizeRange(data, start, end, probability = 1, rng = Math.random) {
     if (!data.length) return 0;
     const safeStart = Math.max(0, Math.min(start, data.length));
     const safeEnd = Math.max(safeStart, Math.min(end, data.length));
+    const chance = Math.max(0, Math.min(probability, 1));
     let modified = 0;
 
     for (let i = safeStart; i < safeEnd; i++) {
-        if (Math.random() <= probability) {
-            data[i] = getRandomByte();
+        if (rng() <= chance) {
+            data[i] = getRandomByte(rng);
             modified++;
         }
     }
@@ -759,19 +854,25 @@ function randomizeRange(data, start, end, probability = 1) {
     return modified;
 }
 
-function randomizeRandomPositions(data, total) {
+function randomizeRandomPositions(data, total, rng = Math.random) {
     if (!data.length || total <= 0) return 0;
-    let modified = 0;
-    for (let i = 0; i < total; i++) {
-        const index = Math.floor(Math.random() * data.length);
-        data[index] = getRandomByte();
-        modified++;
+
+    const target = Math.min(total, data.length);
+    const positions = new Set();
+    while (positions.size < target) {
+        const index = Math.floor(rng() * data.length);
+        positions.add(index);
     }
-    return modified;
+
+    positions.forEach((index) => {
+        data[index] = getRandomByte(rng);
+    });
+
+    return target;
 }
 
-function getRandomByte() {
-    return Math.floor(Math.random() * 256);
+function getRandomByte(rng = Math.random) {
+    return Math.floor(rng() * 256);
 }
 
 function writePattern(data, start, pattern) {
@@ -792,10 +893,28 @@ function embedCorruptionSignature(data, context) {
     const encoder = new TextEncoder();
     const stamp = new Date().toISOString();
     const signature = encoder.encode(`\n<< FILE CORRUPTED | seed=${context.seed} | ${stamp} >>\n`);
+    
+    if (data.length < signature.length + 10) {
+        return {
+            bytesModified: 0,
+            description: '文件过小，跳过签名嵌入'
+        };
+    }
+    
+    const rng = typeof context.random === 'function' ? context.random : Math.random;
     const insertionRange = Math.max(0, data.length - signature.length - 1);
-    const offset = context.strategy === 'text'
-        ? insertionRange
-        : Math.floor(Math.random() * (insertionRange + 1));
+    let offset;
+    
+    if (context.strategy === 'text') {
+        offset = insertionRange;
+    } else if (context.strategy === 'media' || context.strategy === 'binary') {
+        const safeStart = Math.min(256, Math.floor(data.length * 0.1));
+        const safeEnd = Math.max(safeStart, insertionRange - 256);
+        offset = safeStart + Math.floor(rng() * Math.max(1, safeEnd - safeStart));
+    } else {
+        offset = Math.floor(rng() * (insertionRange + 1));
+    }
+    
     const bytesModified = writePattern(data, offset, signature);
 
     return {
@@ -964,7 +1083,42 @@ function resetApp() {
     }
 }
 
+// ==================== 浏览器兼容性检查 ====================
+
+function checkBrowserCompatibility() {
+    const features = {
+        'File API': typeof File !== 'undefined' && typeof FileReader !== 'undefined',
+        'ArrayBuffer': typeof ArrayBuffer !== 'undefined',
+        'Uint8Array': typeof Uint8Array !== 'undefined',
+        'Blob': typeof Blob !== 'undefined',
+        'URL.createObjectURL': typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function',
+        'TextEncoder': typeof TextEncoder !== 'undefined'
+    };
+
+    const unsupported = Object.entries(features).filter(([name, supported]) => !supported);
+    
+    if (unsupported.length > 0) {
+        const missing = unsupported.map(([name]) => name).join(', ');
+        showAlert(`您的浏览器不支持以下功能：${missing}\n\n请使用现代浏览器（如 Chrome、Firefox、Safari、Edge）访问本工具。`);
+        return false;
+    }
+    
+    return true;
+}
+
 // ==================== 初始化 ====================
-console.log('文件破坏工具已加载');
-console.log('支持的破坏程度：轻度、中度、重度');
-console.log('⚠️ 请勿用于不当用途');
+
+if (typeof document !== 'undefined') {
+    if (!checkBrowserCompatibility()) {
+        console.error('浏览器兼容性检查失败');
+        if (corruptBtn) {
+            corruptBtn.disabled = true;
+            corruptBtn.textContent = '浏览器不兼容';
+        }
+    } else {
+        console.log('文件破坏工具已加载');
+        console.log('支持的破坏程度：轻度、中度、重度');
+        console.log(`支持 ${Object.keys(SUPPORTED_FORMATS).length} 种文件格式`);
+        console.log('⚠️ 请勿用于不当用途');
+    }
+}
