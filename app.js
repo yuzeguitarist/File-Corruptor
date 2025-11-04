@@ -501,14 +501,15 @@ function extractExtension(filename) {
 
     const lastDotIndex = sanitized.lastIndexOf('.');
     if (lastDotIndex === -1) {
-        // 无扩展名文件 - 检查是否是Unix可执行文件
+        // 无扩展名文件处理
         if (!isDotFile) {
-            // 检查是否是已知的Unix可执行文件名
+            // 只有在已知列表中的才识别为 Unix 可执行文件
             if (UNIX_EXECUTABLE_NAMES.includes(sanitized)) {
                 return 'unix-executable';
             }
-            // 对于其他无扩展名文件，也将其视为Unix可执行文件
-            return 'unix-executable';
+            // 其他无扩展名文件返回空字符串（不支持）
+            // 例如：README, CHANGELOG, AUTHORS 等文档文件
+            return '';
         }
         return isDotFile ? sanitized : '';
     }
