@@ -226,7 +226,10 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
     return { ...all, ...category.formats };
 }, {});
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
+// 安全的内存限制：200MB
+// 注意：使用 File.arrayBuffer() 会将整个文件加载到内存，
+// 过大的文件会导致浏览器崩溃而非触发 QuotaExceededError
+const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
 const SIGNATURE_SCAN_CONFIG = {
     smallFileThreshold: 1 * 1024 * 1024,
@@ -371,46 +374,78 @@ function handleFileSelect(files) {
 
     selectedFiles = validFiles;
 
-    // 显示文件信息
+    // 清空并安全地重建文件信息显示（防止 XSS）
+    fileInfo.innerHTML = ''; // 先清空
+
     if (validFiles.length === 1) {
+        // 单文件模式 - 使用安全的 DOM 操作
         const file = validFiles[0];
         const extension = extractExtension(file.name);
         const categoryKey = getFileCategory(extension);
         const categoryLabel = getCategoryLabel(categoryKey);
         const typeLabel = SUPPORTED_FORMATS[extension] || file.type || '未知类型';
 
-        fileInfo.innerHTML = `
-            <div class="info-row">
-                <span class="info-label">文件名：</span>
-                <span class="info-value">${file.name}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">文件大小：</span>
-                <span class="info-value">${formatFileSize(file.size)}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">文件类型：</span>
-                <span class="info-value">${categoryLabel ? `${typeLabel} · ${categoryLabel}` : typeLabel}</span>
-            </div>
-        `;
-    } else {
-        const totalSize = validFiles.reduce((sum, f) => sum + f.size, 0);
-        const fileList = validFiles.map(f => `• ${f.name} (${formatFileSize(f.size)})`).join('<br>');
+        // 文件名行
+        const nameRow = createSafeElement('div', { class: 'info-row' });
+        nameRow.appendChild(createSafeElement('span', { class: 'info-label' }, '文件名：'));
+        nameRow.appendChild(createSafeElement('span', { class: 'info-value' }, file.name)); // 安全的 textContent
+        fileInfo.appendChild(nameRow);
 
-        fileInfo.innerHTML = `
-            <div class="info-row">
-                <span class="info-label">文件数量：</span>
-                <span class="info-value">${validFiles.length} 个文件</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">总大小：</span>
-                <span class="info-value">${formatFileSize(totalSize)}</span>
-            </div>
-            <div class="info-row" style="display: block; margin-top: 12px;">
-                <span class="info-label" style="display: block; margin-bottom: 8px;">文件列表：</span>
-                <div style="font-size: 13px; line-height: 1.6; color: var(--gray-700);">${fileList}</div>
-            </div>
-        `;
+        // 文件大小行
+        const sizeRow = createSafeElement('div', { class: 'info-row' });
+        sizeRow.appendChild(createSafeElement('span', { class: 'info-label' }, '文件大小：'));
+        sizeRow.appendChild(createSafeElement('span', { class: 'info-value' }, formatFileSize(file.size)));
+        fileInfo.appendChild(sizeRow);
+
+        // 文件类型行
+        const typeRow = createSafeElement('div', { class: 'info-row' });
+        typeRow.appendChild(createSafeElement('span', { class: 'info-label' }, '文件类型：'));
+        const typeText = categoryLabel ? `${typeLabel} · ${categoryLabel}` : typeLabel;
+        typeRow.appendChild(createSafeElement('span', { class: 'info-value' }, typeText));
+        fileInfo.appendChild(typeRow);
+    } else {
+        // 批量文件模式 - 使用安全的 DOM 操作
+        const totalSize = validFiles.reduce((sum, f) => sum + f.size, 0);
+
+        // 文件数量行
+        const countRow = createSafeElement('div', { class: 'info-row' });
+        countRow.appendChild(createSafeElement('span', { class: 'info-label' }, '文件数量：'));
+        countRow.appendChild(createSafeElement('span', { class: 'info-value' }, `${validFiles.length} 个文件`));
+        fileInfo.appendChild(countRow);
+
+        // 总大小行
+        const totalSizeRow = createSafeElement('div', { class: 'info-row' });
+        totalSizeRow.appendChild(createSafeElement('span', { class: 'info-label' }, '总大小：'));
+        totalSizeRow.appendChild(createSafeElement('span', { class: 'info-value' }, formatFileSize(totalSize)));
+        fileInfo.appendChild(totalSizeRow);
+
+        // 文件列表行
+        const listRow = createSafeElement('div', {
+            class: 'info-row',
+            style: { display: 'block', 'margin-top': '12px' }
+        });
+        const listLabel = createSafeElement('span', {
+            class: 'info-label',
+            style: { display: 'block', 'margin-bottom': '8px' }
+        }, '文件列表：');
+        listRow.appendChild(listLabel);
+
+        // 文件列表容器（每个文件单独一个元素，避免 XSS）
+        const listContainer = createSafeElement('div', {
+            style: {
+                'font-size': '13px',
+                'line-height': '1.6',
+                color: 'var(--gray-700)'
+            }
+        });
+
+        validFiles.forEach(f => {
+            const fileItem = createSafeElement('div', {}, `• ${f.name} (${formatFileSize(f.size)})`);
+            listContainer.appendChild(fileItem);
+        });
+
+        listRow.appendChild(listContainer);
+        fileInfo.appendChild(listRow);
     }
 
     fileInfo.style.display = 'block';
@@ -492,6 +527,40 @@ function showAlert(message) {
     } else {
         console.warn('[ALERT]', message);
     }
+}
+
+/**
+ * 安全的 HTML 转义函数，防止 XSS 攻击
+ * @param {string} str - 需要转义的字符串
+ * @returns {string} 转义后的安全字符串
+ */
+function escapeHtml(str) {
+    if (typeof str !== 'string') return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+/**
+ * 安全地创建并添加 DOM 元素（防止 XSS）
+ * @param {string} tag - 标签名
+ * @param {Object} attributes - 属性对象
+ * @param {string} textContent - 文本内容（会自动转义）
+ * @returns {HTMLElement}
+ */
+function createSafeElement(tag, attributes = {}, textContent = '') {
+    const element = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) {
+        if (key === 'style' && typeof value === 'object') {
+            Object.assign(element.style, value);
+        } else {
+            element.setAttribute(key, value);
+        }
+    }
+    if (textContent) {
+        element.textContent = textContent; // 使用 textContent 而非 innerHTML 防止 XSS
+    }
+    return element;
 }
 
 // ==================== 按钮事件处理 ====================
@@ -933,6 +1002,7 @@ function detectDevicePerformance() {
     }
 
     // 根据分数推荐速度档位
+    // 修正阈值：评分最高为7（8核+8GB内存+桌面 = 3+3+1），确保 ultra 可触及
     let recommendedSpeed;
     let recommendation;
 
@@ -942,10 +1012,11 @@ function detectDevicePerformance() {
     } else if (score <= 5) {
         recommendedSpeed = 'medium';
         recommendation = '推荐: 中速档位（检测到普通设备）';
-    } else if (score <= 7) {
+    } else if (score <= 6) {
         recommendedSpeed = 'fast';
         recommendation = '推荐: 高速档位（检测到高配设备）';
     } else {
+        // score >= 7: 高性能设备（8核心 + 8GB内存 + 桌面）
         recommendedSpeed = 'ultra';
         recommendation = '推荐: 极速档位（检测到高性能设备）';
     }
