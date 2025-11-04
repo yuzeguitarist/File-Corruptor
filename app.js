@@ -1,5 +1,5 @@
 // ==================== 全局变量 ====================
-let selectedFile = null;
+let selectedFiles = [];
 
 // 支持的文件格式类别
 const FILE_CATEGORIES = {
@@ -104,7 +104,9 @@ const FILE_CATEGORIES = {
             'iso': 'ISO镜像',
             'dmg': 'DMG镜像',
             'cab': 'CAB压缩包',
-            'mxl': 'MusicXML压缩文件'
+            'mxl': 'MusicXML压缩文件',
+            'vsix': 'VS Code扩展包',
+            'har': 'HTTP归档文件'
         }
     },
     code: {
@@ -175,7 +177,8 @@ const FILE_CATEGORIES = {
             'rpm': 'RPM包',
             'pkg': '安装包',
             'command': 'macOS命令文件',
-            'reg': 'Windows注册表文件'
+            'reg': 'Windows注册表文件',
+            'unix-executable': 'Unix可执行文件'
         }
     },
     database: {
@@ -223,7 +226,7 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
     return { ...all, ...category.formats };
 }, {});
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
 
 const SIGNATURE_SCAN_CONFIG = {
     smallFileThreshold: 1 * 1024 * 1024,
@@ -249,6 +252,14 @@ const SPECIAL_EXTENSION_RULES = [
         match: (name) => name === '.env' || name.startsWith('.env.'),
         value: 'env'
     }
+];
+
+// Unix可执行文件检测 - 无扩展名的文件
+const UNIX_EXECUTABLE_NAMES = [
+    'bash', 'sh', 'zsh', 'fish', 'tcsh', 'ksh',
+    'python', 'python2', 'python3', 'node', 'perl', 'ruby',
+    'awk', 'sed', 'grep', 'find', 'git', 'vim', 'nano',
+    'npm', 'yarn', 'docker', 'kubectl', 'make', 'cmake'
 ];
 
 // ==================== DOM 元素 ====================
@@ -285,9 +296,9 @@ uploadArea.addEventListener('click', (e) => {
 
 // 文件选择处理
 fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        handleFileSelect(file);
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+        handleFileSelect(files);
     }
 });
 
@@ -304,10 +315,10 @@ uploadArea.addEventListener('dragleave', () => {
 uploadArea.addEventListener('drop', (e) => {
     e.preventDefault();
     uploadArea.classList.remove('dragover');
-    
-    const file = e.dataTransfer.files[0];
-    if (file) {
-        handleFileSelect(file);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+        handleFileSelect(files);
     }
 });
 
@@ -315,57 +326,95 @@ uploadArea.addEventListener('drop', (e) => {
 
 /**
  * 处理选中的文件
- * @param {File} file - 用户选择的文件
+ * @param {File[]} files - 用户选择的文件数组
  */
-function handleFileSelect(file) {
-    if (!file) {
+function handleFileSelect(files) {
+    if (!files || files.length === 0) {
         console.error('没有文件被选择');
         return;
     }
 
-    if (file.size > MAX_FILE_SIZE) {
-        showAlert(`文件过大！\n\n当前文件：${formatFileSize(file.size)}\n最大限制：${formatFileSize(MAX_FILE_SIZE)}\n\n请选择较小的文件。`);
+    // 验证所有文件
+    const validFiles = [];
+    const errors = [];
+
+    for (const file of files) {
+        if (file.size > MAX_FILE_SIZE) {
+            errors.push(`${file.name}: 文件过大 (${formatFileSize(file.size)})`);
+            continue;
+        }
+
+        const extension = extractExtension(file.name);
+
+        if (!extension) {
+            errors.push(`${file.name}: 无法识别文件扩展名`);
+            continue;
+        }
+
+        if (!SUPPORTED_FORMATS[extension]) {
+            errors.push(`${file.name}: 不支持的文件格式 (.${extension})`);
+            continue;
+        }
+
+        validFiles.push(file);
+    }
+
+    if (errors.length > 0 && validFiles.length === 0) {
+        showAlert(`所有文件都无效：\n\n${errors.join('\n')}\n\n最大限制：${formatFileSize(MAX_FILE_SIZE)}`);
         fileInput.value = '';
         return;
     }
 
-    const extension = extractExtension(file.name);
-
-    if (!extension) {
-        showAlert('无法识别文件扩展名。\n\n请确保文件有正确的扩展名（如 .txt, .pdf 等）。');
-        fileInput.value = '';
-        return;
+    if (errors.length > 0) {
+        showAlert(`以下文件被跳过：\n\n${errors.join('\n')}\n\n将处理 ${validFiles.length} 个有效文件。`);
     }
 
-    if (!SUPPORTED_FORMATS[extension]) {
-        uploadArea.style.backgroundColor = 'var(--gray-200)';
-        uploadArea.style.borderColor = 'var(--gray-400)';
-        uploadArea.style.opacity = '0.6';
+    selectedFiles = validFiles;
 
-        showAlert(`不支持的文件格式：.${extension}\n\n支持的格式包括：\n${getSupportedFormatsSummary()}\n\n请选择支持的文件格式。`);
+    // 显示文件信息
+    if (validFiles.length === 1) {
+        const file = validFiles[0];
+        const extension = extractExtension(file.name);
+        const categoryKey = getFileCategory(extension);
+        const categoryLabel = getCategoryLabel(categoryKey);
+        const typeLabel = SUPPORTED_FORMATS[extension] || file.type || '未知类型';
 
-        setTimeout(() => {
-            uploadArea.style.backgroundColor = '';
-            uploadArea.style.borderColor = '';
-            uploadArea.style.opacity = '';
-        }, 2000);
+        fileInfo.innerHTML = `
+            <div class="info-row">
+                <span class="info-label">文件名：</span>
+                <span class="info-value">${file.name}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">文件大小：</span>
+                <span class="info-value">${formatFileSize(file.size)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">文件类型：</span>
+                <span class="info-value">${categoryLabel ? `${typeLabel} · ${categoryLabel}` : typeLabel}</span>
+            </div>
+        `;
+    } else {
+        const totalSize = validFiles.reduce((sum, f) => sum + f.size, 0);
+        const fileList = validFiles.map(f => `• ${f.name} (${formatFileSize(f.size)})`).join('<br>');
 
-        fileInput.value = '';
-        return;
+        fileInfo.innerHTML = `
+            <div class="info-row">
+                <span class="info-label">文件数量：</span>
+                <span class="info-value">${validFiles.length} 个文件</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">总大小：</span>
+                <span class="info-value">${formatFileSize(totalSize)}</span>
+            </div>
+            <div class="info-row" style="display: block; margin-top: 12px;">
+                <span class="info-label" style="display: block; margin-bottom: 8px;">文件列表：</span>
+                <div style="font-size: 13px; line-height: 1.6; color: var(--gray-700);">${fileList}</div>
+            </div>
+        `;
     }
-
-    selectedFile = file;
-    const categoryKey = getFileCategory(extension);
-    const categoryLabel = getCategoryLabel(categoryKey);
-
-    fileName.textContent = file.name;
-    fileSize.textContent = formatFileSize(file.size);
-    const typeLabel = SUPPORTED_FORMATS[extension] || file.type || '未知类型';
-    fileType.textContent = categoryLabel ? `${typeLabel} · ${categoryLabel}` : typeLabel;
 
     fileInfo.style.display = 'block';
     optionsSection.style.display = 'block';
-
     uploadArea.style.display = 'none';
 }
 
@@ -417,6 +466,15 @@ function extractExtension(filename) {
 
     const lastDotIndex = sanitized.lastIndexOf('.');
     if (lastDotIndex === -1) {
+        // 无扩展名文件 - 检查是否是Unix可执行文件
+        if (!isDotFile) {
+            // 检查是否是已知的Unix可执行文件名
+            if (UNIX_EXECUTABLE_NAMES.includes(sanitized)) {
+                return 'unix-executable';
+            }
+            // 对于其他无扩展名文件，也将其视为Unix可执行文件
+            return 'unix-executable';
+        }
         return isDotFile ? sanitized : '';
     }
 
@@ -449,28 +507,41 @@ resetBtn.addEventListener('click', () => {
  * 破坏文件按钮
  */
 corruptBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
-    
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
     try {
         const level = document.querySelector('input[name="level"]:checked').value;
         const options = getAdvancedOptions();
+        const delay = getProcessingDelay(options.processingSpeed);
 
         optionsSection.style.display = 'none';
         fileInfo.style.display = 'none';
         statusSection.style.display = 'block';
-        statusText.textContent = '正在破坏文件...';
-        
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        await corruptFile(selectedFile, level, options);
+
+        if (selectedFiles.length === 1) {
+            statusText.textContent = '正在破坏文件...';
+            await new Promise(resolve => setTimeout(resolve, Math.min(delay, 800)));
+            await corruptFile(selectedFiles[0], level, options);
+        } else {
+            // 批量处理多个文件
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                statusText.textContent = `正在破坏文件 ${i + 1}/${selectedFiles.length}: ${file.name}`;
+
+                // 根据速度档位调整延迟
+                const batchDelay = Math.min(delay, 500); // 批量处理时的最大延迟
+                await new Promise(resolve => setTimeout(resolve, batchDelay));
+                await corruptFile(file, level, options);
+            }
+        }
 
         statusSection.style.display = 'none';
         successSection.style.display = 'block';
     } catch (error) {
         console.error('文件破坏失败:', error);
-        
+
         let errorMessage = '文件破坏失败，请重试。';
-        
+
         if (error instanceof DOMException && error.name === 'QuotaExceededError') {
             errorMessage = '内存不足！文件过大，浏览器无法处理。\n\n请尝试使用较小的文件。';
         } else if (error instanceof TypeError) {
@@ -478,7 +549,7 @@ corruptBtn.addEventListener('click', async () => {
         } else if (error.message) {
             errorMessage = `错误：${error.message}`;
         }
-        
+
         showAlert(errorMessage);
         statusSection.style.display = 'none';
         optionsSection.style.display = 'block';
@@ -812,12 +883,94 @@ function getAdvancedOptions() {
     const randomizeName = document.getElementById('randomizeName');
     const downloadReport = document.getElementById('downloadReport');
     const embedSignature = document.getElementById('embedSignature');
-    
+    const processingSpeed = document.getElementById('processingSpeed');
+
     return {
         randomizeName: randomizeName ? randomizeName.checked : false,
         downloadReport: downloadReport ? downloadReport.checked : false,
-        embedSignature: embedSignature ? embedSignature.checked : true
+        embedSignature: embedSignature ? embedSignature.checked : true,
+        processingSpeed: processingSpeed ? processingSpeed.value : 'medium'
     };
+}
+
+/**
+ * 检测设备性能并推荐速度档位
+ */
+function detectDevicePerformance() {
+    let score = 0;
+    let deviceInfo = [];
+
+    // 检测CPU核心数
+    const cores = navigator.hardwareConcurrency || 2;
+    deviceInfo.push(`CPU核心数: ${cores}`);
+    if (cores >= 8) score += 3;
+    else if (cores >= 4) score += 2;
+    else score += 1;
+
+    // 检测内存（如果可用）
+    if (navigator.deviceMemory) {
+        const memory = navigator.deviceMemory; // GB
+        deviceInfo.push(`内存: ${memory}GB`);
+        if (memory >= 8) score += 3;
+        else if (memory >= 4) score += 2;
+        else score += 1;
+    } else {
+        score += 2; // 默认中等分数
+    }
+
+    // 检测设备类型
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isTablet = /iPad|Android(?!.*Mobile)/i.test(navigator.userAgent);
+
+    if (isMobile && !isTablet) {
+        deviceInfo.push('设备类型: 移动设备');
+        score -= 1;
+    } else if (isTablet) {
+        deviceInfo.push('设备类型: 平板');
+    } else {
+        deviceInfo.push('设备类型: 桌面');
+        score += 1;
+    }
+
+    // 根据分数推荐速度档位
+    let recommendedSpeed;
+    let recommendation;
+
+    if (score <= 3) {
+        recommendedSpeed = 'slow';
+        recommendation = '推荐: 低速档位（检测到低配设备）';
+    } else if (score <= 5) {
+        recommendedSpeed = 'medium';
+        recommendation = '推荐: 中速档位（检测到普通设备）';
+    } else if (score <= 7) {
+        recommendedSpeed = 'fast';
+        recommendation = '推荐: 高速档位（检测到高配设备）';
+    } else {
+        recommendedSpeed = 'ultra';
+        recommendation = '推荐: 极速档位（检测到高性能设备）';
+    }
+
+    console.log('设备性能检测:', deviceInfo.join(', '), `评分: ${score}`, recommendation);
+
+    return { speed: recommendedSpeed, recommendation, deviceInfo };
+}
+
+/**
+ * 根据速度档位获取处理延迟时间（毫秒）
+ */
+function getProcessingDelay(speed) {
+    switch (speed) {
+        case 'slow':
+            return 1000; // 1秒延迟，减少内存压力
+        case 'medium':
+            return 500;  // 0.5秒延迟
+        case 'fast':
+            return 200;  // 0.2秒延迟
+        case 'ultra':
+            return 50;   // 0.05秒延迟，几乎无延迟
+        default:
+            return 500;
+    }
 }
 
 function getFileCategory(extension) {
@@ -1213,7 +1366,7 @@ function translateLevel(level) {
  * 重置应用到初始状态
  */
 function resetApp() {
-    selectedFile = null;
+    selectedFiles = [];
     fileInput.value = '';
 
     // 隐藏所有区域
@@ -1276,5 +1429,20 @@ if (typeof document !== 'undefined') {
         console.log('支持的破坏程度：轻度、中度、重度');
         console.log(`支持 ${Object.keys(SUPPORTED_FORMATS).length} 种文件格式`);
         console.log('⚠️ 请勿用于不当用途');
+
+        // 自动检测设备性能并设置推荐速度
+        const performanceInfo = detectDevicePerformance();
+        const speedSelect = document.getElementById('processingSpeed');
+        const speedRecommendation = document.getElementById('speedRecommendation');
+
+        if (speedSelect && performanceInfo) {
+            speedSelect.value = performanceInfo.speed;
+            if (speedRecommendation) {
+                speedRecommendation.textContent = performanceInfo.recommendation;
+                speedRecommendation.style.color = 'var(--gray-700)';
+                speedRecommendation.style.fontWeight = '500';
+            }
+            console.log('已自动设置推荐速度档位:', performanceInfo.speed);
+        }
     }
 }
