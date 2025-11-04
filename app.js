@@ -229,8 +229,7 @@ const SIGNATURE_SCAN_CONFIG = {
     smallFileThreshold: 1 * 1024 * 1024,
     headBytes: 512 * 1024,
     tailBytes: 512 * 1024,
-    midWindowBytes: 256 * 1024,
-    midSamples: 3
+    midWindowBytes: 256 * 1024
 };
 
 const SPECIAL_EXTENSION_RULES = [
@@ -407,19 +406,26 @@ function extractExtension(filename) {
         }
     }
 
-    if (lower.startsWith('.')) {
-        const remainder = lower.slice(1);
-        if (!remainder) return '';
-        const [firstSegment] = remainder.split('.');
-        return firstSegment || '';
+    const isDotFile = lower.startsWith('.');
+    let sanitized = isDotFile ? lower.slice(1) : lower;
+    if (!sanitized) return '';
+
+    if (sanitized.endsWith('.')) {
+        sanitized = sanitized.slice(0, -1);
+        if (!sanitized) return '';
     }
 
-    const lastDotIndex = lower.lastIndexOf('.');
-    if (lastDotIndex <= 0 || lastDotIndex === lower.length - 1) {
-        return '';
+    const lastDotIndex = sanitized.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+        return isDotFile ? sanitized : '';
     }
 
-    return lower.slice(lastDotIndex + 1);
+    if (lastDotIndex === sanitized.length - 1) {
+        const withoutTrailingDot = sanitized.slice(0, lastDotIndex);
+        return withoutTrailingDot || '';
+    }
+
+    return sanitized.slice(lastDotIndex + 1);
 }
 
 function showAlert(message) {
@@ -868,7 +874,7 @@ function corruptSignature(data, signature, probability = 1, rng = Math.random) {
     const chance = Math.max(0, Math.min(probability, 1));
     const sigLength = signature.length;
 
-    const segments = buildSignatureSegments(data.length, sigLength, rng);
+    const segments = buildSignatureSegments(data.length, sigLength);
     if (!segments.length) {
         return 0;
     }
@@ -922,7 +928,7 @@ function getRandomByte(rng = Math.random) {
     return Math.floor(rng() * 256);
 }
 
-function buildSignatureSegments(length, signatureLength, rng = Math.random) {
+function buildSignatureSegments(length, signatureLength) {
     if (length <= 0 || length < signatureLength) {
         return [];
     }
@@ -934,24 +940,26 @@ function buildSignatureSegments(length, signatureLength, rng = Math.random) {
     const segments = [];
 
     const headEnd = Math.min(length, SIGNATURE_SCAN_CONFIG.headBytes);
-    segments.push({ start: 0, end: headEnd });
+    if (headEnd > 0) {
+        segments.push({ start: 0, end: headEnd });
+    }
 
-    const tailStart = Math.max(0, length - SIGNATURE_SCAN_CONFIG.tailBytes);
-    if (tailStart > 0) {
+    const tailStart = Math.max(headEnd, length - SIGNATURE_SCAN_CONFIG.tailBytes);
+    if (tailStart < length) {
         segments.push({ start: tailStart, end: length });
     }
 
-    const windowSize = Math.min(
-        SIGNATURE_SCAN_CONFIG.midWindowBytes,
-        Math.max(signatureLength * 4, 4096)
-    );
+    const midStart = headEnd;
+    const midEnd = Math.max(midStart, tailStart);
+    const windowSize = Math.max(signatureLength * 4, SIGNATURE_SCAN_CONFIG.midWindowBytes);
 
-    const maxStart = Math.max(0, length - windowSize);
-    const sampleCount = Math.max(0, SIGNATURE_SCAN_CONFIG.midSamples);
-    for (let i = 0; i < sampleCount && maxStart > 0; i++) {
-        const start = Math.floor(rng() * (maxStart + 1));
-        const end = Math.min(length, start + windowSize);
-        segments.push({ start, end });
+    if (midEnd - midStart > signatureLength) {
+        for (let start = midStart; start < midEnd; start += windowSize) {
+            const end = Math.min(midEnd, start + windowSize);
+            if (end - start >= signatureLength) {
+                segments.push({ start, end });
+            }
+        }
     }
 
     return mergeSegments(segments, length);
@@ -978,7 +986,7 @@ function mergeSegments(segments, length) {
         const current = normalized[i];
         const last = merged[merged.length - 1];
 
-        if (current.start <= last.end) {
+        if (current.start < last.end) {
             last.end = Math.max(last.end, current.end);
         } else {
             merged.push(current);
