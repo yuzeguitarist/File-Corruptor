@@ -225,6 +225,32 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
 
+const SIGNATURE_SCAN_CONFIG = {
+    smallFileThreshold: 1 * 1024 * 1024,
+    headBytes: 512 * 1024,
+    tailBytes: 512 * 1024,
+    midWindowBytes: 256 * 1024
+};
+
+const SPECIAL_EXTENSION_RULES = [
+    {
+        match: (name) => name === 'dockerfile' || name.startsWith('dockerfile.'),
+        value: 'dockerfile'
+    },
+    {
+        match: (name) => name === 'makefile' || name.startsWith('makefile.'),
+        value: 'makefile'
+    },
+    {
+        match: (name) => name === 'license',
+        value: 'license'
+    },
+    {
+        match: (name) => name === '.env' || name.startsWith('.env.'),
+        value: 'env'
+    }
+];
+
 // ==================== DOM 元素 ====================
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
@@ -364,11 +390,42 @@ function formatFileSize(bytes) {
 
 function extractExtension(filename) {
     if (!filename || typeof filename !== 'string') return '';
-    const lastDotIndex = filename.lastIndexOf('.');
-    if (lastDotIndex <= 0 || lastDotIndex === filename.length - 1) {
-        return '';
+
+    const trimmed = filename.trim();
+    if (!trimmed) return '';
+
+    const lower = trimmed.toLowerCase();
+
+    for (const rule of SPECIAL_EXTENSION_RULES) {
+        try {
+            if (rule.match(lower)) {
+                return rule.value;
+            }
+        } catch (error) {
+            console.warn('[extractExtension] 特殊规则匹配失败:', error);
+        }
     }
-    return filename.slice(lastDotIndex + 1).toLowerCase();
+
+    const isDotFile = lower.startsWith('.');
+    let sanitized = isDotFile ? lower.slice(1) : lower;
+    if (!sanitized) return '';
+
+    if (sanitized.endsWith('.')) {
+        sanitized = sanitized.slice(0, -1);
+        if (!sanitized) return '';
+    }
+
+    const lastDotIndex = sanitized.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+        return isDotFile ? sanitized : '';
+    }
+
+    if (lastDotIndex === sanitized.length - 1) {
+        const withoutTrailingDot = sanitized.slice(0, lastDotIndex);
+        return withoutTrailingDot || '';
+    }
+
+    return sanitized.slice(lastDotIndex + 1);
 }
 
 function showAlert(message) {
@@ -810,28 +867,21 @@ function mutateHeader(data, length, probability = 1, rng = Math.random) {
 }
 
 function corruptSignature(data, signature, probability = 1, rng = Math.random) {
-    if (!Array.isArray(signature) || signature.length === 0) return 0;
-    let modified = 0;
-    const sigLength = signature.length;
+    if (!Array.isArray(signature) || signature.length === 0 || !data.length) {
+        return 0;
+    }
+
     const chance = Math.max(0, Math.min(probability, 1));
+    const sigLength = signature.length;
 
-    for (let i = 0; i <= data.length - sigLength; i++) {
-        let matched = true;
-        for (let j = 0; j < sigLength; j++) {
-            if (data[i + j] !== signature[j]) {
-                matched = false;
-                break;
-            }
-        }
+    const segments = buildSignatureSegments(data.length, sigLength);
+    if (!segments.length) {
+        return 0;
+    }
 
-        if (matched) {
-            for (let j = 0; j < sigLength; j++) {
-                if (rng() <= chance) {
-                    data[i + j] = getRandomByte(rng);
-                    modified++;
-                }
-            }
-        }
+    let modified = 0;
+    for (const segment of segments) {
+        modified += mutateSignatureWithinRange(data, signature, segment.start, segment.end, chance, rng);
     }
 
     return modified;
@@ -858,21 +908,127 @@ function randomizeRandomPositions(data, total, rng = Math.random) {
     if (!data.length || total <= 0) return 0;
 
     const target = Math.min(total, data.length);
-    const positions = new Set();
-    while (positions.size < target) {
-        const index = Math.floor(rng() * data.length);
-        positions.add(index);
+    let modified = 0;
+
+    for (let i = 0; i < data.length && modified < target; i++) {
+        const remainingPositions = data.length - i;
+        const remainingNeeded = target - modified;
+        const threshold = remainingNeeded / remainingPositions;
+
+        if (rng() <= threshold) {
+            data[i] = getRandomByte(rng);
+            modified++;
+        }
     }
 
-    positions.forEach((index) => {
-        data[index] = getRandomByte(rng);
-    });
-
-    return target;
+    return modified;
 }
 
 function getRandomByte(rng = Math.random) {
     return Math.floor(rng() * 256);
+}
+
+function buildSignatureSegments(length, signatureLength) {
+    if (length <= 0 || length < signatureLength) {
+        return [];
+    }
+
+    if (length <= SIGNATURE_SCAN_CONFIG.smallFileThreshold) {
+        return [{ start: 0, end: length }];
+    }
+
+    const segments = [];
+
+    const headEnd = Math.min(length, SIGNATURE_SCAN_CONFIG.headBytes);
+    if (headEnd > 0) {
+        segments.push({ start: 0, end: headEnd });
+    }
+
+    const tailStart = Math.max(headEnd, length - SIGNATURE_SCAN_CONFIG.tailBytes);
+    if (tailStart < length) {
+        segments.push({ start: tailStart, end: length });
+    }
+
+    const midStart = headEnd;
+    const midEnd = Math.max(midStart, tailStart);
+    const windowSize = Math.max(signatureLength * 4, SIGNATURE_SCAN_CONFIG.midWindowBytes);
+
+    if (midEnd - midStart > signatureLength) {
+        for (let start = midStart; start < midEnd; start += windowSize) {
+            const end = Math.min(midEnd, start + windowSize);
+            if (end - start >= signatureLength) {
+                segments.push({ start, end });
+            }
+        }
+    }
+
+    return mergeSegments(segments, length);
+}
+
+function mergeSegments(segments, length) {
+    if (!Array.isArray(segments)) return [];
+
+    const normalized = segments
+        .map(({ start, end }) => ({
+            start: Math.max(0, Math.min(start ?? 0, length)),
+            end: Math.max(0, Math.min(end ?? length, length))
+        }))
+        .filter((segment) => segment.end > segment.start);
+
+    if (!normalized.length) {
+        return [];
+    }
+
+    normalized.sort((a, b) => a.start - b.start);
+
+    const merged = [normalized[0]];
+    for (let i = 1; i < normalized.length; i++) {
+        const current = normalized[i];
+        const last = merged[merged.length - 1];
+
+        if (current.start < last.end) {
+            last.end = Math.max(last.end, current.end);
+        } else {
+            merged.push(current);
+        }
+    }
+
+    return merged;
+}
+
+function mutateSignatureWithinRange(data, signature, start, end, chance, rng) {
+    const safeStart = Math.max(0, Math.min(start, data.length));
+    const safeEnd = Math.max(safeStart, Math.min(end, data.length));
+
+    if (safeEnd - safeStart < signature.length) {
+        return 0;
+    }
+
+    let modified = 0;
+    const windowEnd = safeEnd - signature.length + 1;
+
+    for (let i = safeStart; i < windowEnd; i++) {
+        let matched = true;
+        for (let j = 0; j < signature.length; j++) {
+            if (data[i + j] !== signature[j]) {
+                matched = false;
+                break;
+            }
+        }
+
+        if (!matched) continue;
+
+        for (let j = 0; j < signature.length; j++) {
+            if (rng() <= chance) {
+                data[i + j] = getRandomByte(rng);
+                modified++;
+            }
+        }
+
+        i += signature.length - 1;
+    }
+
+    return modified;
 }
 
 function writePattern(data, start, pattern) {
