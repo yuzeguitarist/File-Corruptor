@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文件破坏工具 - File Corruptor</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -36,7 +37,8 @@
                     </svg>
                     <p class="upload-text">点击或拖拽文件到此处</p>
                     <p class="upload-hint">支持格式：PDF, DOCX, CMD, PS1, LICENSE, DB, SIB, PNG, ZIP 等</p>
-                    <input type="file" id="fileInput" class="file-input" accept="*/*">
+                    <p class="upload-hint" style="margin-top: 8px; color: var(--gray-600); font-size: 13px;">支持批量上传多个文件</p>
+                    <input type="file" id="fileInput" class="file-input" accept="*/*" multiple>
                 </div>
 
                 <!-- 文件信息显示 -->
@@ -108,6 +110,18 @@
                                     <div class="option-desc">生成一份 JSON 报告，记录破坏操作细节。</div>
                                 </div>
                             </label>
+                            <div class="advanced-option" style="display: block;">
+                                <div class="option-title" style="margin-bottom: 8px;">处理速度档位</div>
+                                <div class="option-desc" style="margin-bottom: 12px;">
+                                    <span id="speedRecommendation">正在检测设备性能...</span>
+                                </div>
+                                <select id="processingSpeed" style="width: 100%; padding: 8px; border: 1px solid var(--gray-400); border-radius: 4px; font-family: 'SF Mono', monospace; font-size: 14px;">
+                                    <option value="slow">低速 - 减少内存占用，适合低配设备</option>
+                                    <option value="medium">中速 - 平衡性能与内存，适合普通设备</option>
+                                    <option value="fast">高速 - 优先处理速度，适合高配设备</option>
+                                    <option value="ultra">极速 - 最快速度，适合高性能设备</option>
+                                </select>
+                            </div>
                         </div>
                     </details>
                 </div>

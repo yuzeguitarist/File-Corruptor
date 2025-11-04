@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>XSS 防护测试</title>
+</head>
+<body>
+    <h1>XSS 防护测试</h1>
+
+    <h2>测试 1: 恶意文件名（修复前会触发 XSS）</h2>
+    <div id="test1"></div>
+
+    <h2>测试 2: 使用安全方法（修复后）</h2>
+    <div id="test2"></div>
+
+    <script>
+        // 模拟恶意文件名
+        const maliciousFileName = '<img src=x onerror=alert("XSS_ATTACK")>.pdf';
+
+        // 不安全的方法（修复前）
+        console.warn('⚠️ 不安全的方法演示（已注释，避免实际触发 XSS）:');
+        // document.getElementById('test1').innerHTML = `文件名: ${maliciousFileName}`; // 会触发 XSS！
+        document.getElementById('test1').textContent = '已禁用不安全演示（会触发 XSS 攻击）';
+
+        // 安全的方法（修复后）
+        function createSafeElement(tag, attributes = {}, textContent = '') {
+            const element = document.createElement(tag);
+            for (const [key, value] of Object.entries(attributes)) {
+                element.setAttribute(key, value);
+            }
+            if (textContent) {
+                element.textContent = textContent; // 使用 textContent 安全渲染
+            }
+            return element;
+        }
+
+        const safeContainer = document.getElementById('test2');
+        safeContainer.appendChild(document.createTextNode('文件名: '));
+        safeContainer.appendChild(createSafeElement('strong', {}, maliciousFileName));
+
+        console.log('✅ 安全方法: 恶意代码被自动转义为纯文本');
+        console.log('显示的文本:', document.getElementById('test2').textContent);
+    </script>
+</body>
+</html>
