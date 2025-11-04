@@ -363,8 +363,11 @@ function handleFileSelect(files) {
     }
 
     if (errors.length > 0 && validFiles.length === 0) {
+        // 所有文件都被拒绝，需要完整重置UI状态
         showAlert(`所有文件都无效：\n\n${errors.join('\n')}\n\n最大限制：${formatFileSize(MAX_FILE_SIZE)}`);
-        fileInput.value = '';
+
+        // 重置所有状态和UI元素，避免显示陈旧数据
+        resetApp();
         return;
     }
 
