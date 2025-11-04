@@ -1,53 +1,16 @@
 /**
  * 测试文件扩展名检测逻辑（特别是无扩展名文件的处理）
+ *
+ * 重要：此测试导入并测试真实的 app.js 代码，而不是重新实现逻辑
+ * 这确保测试能够真正验证生产代码的行为
  */
 
-// 模拟 UNIX_EXECUTABLE_NAMES 列表
-const UNIX_EXECUTABLE_NAMES = [
-    'bash', 'sh', 'zsh', 'fish', 'tcsh', 'ksh',
-    'python', 'python2', 'python3', 'node', 'perl', 'ruby',
-    'awk', 'sed', 'grep', 'find', 'git', 'vim', 'nano',
-    'npm', 'yarn', 'docker', 'kubectl', 'make', 'cmake'
-];
-
-// 模拟 extractExtension 函数的关键逻辑
-function extractExtension(filename) {
-    if (!filename || typeof filename !== 'string') return '';
-
-    const trimmed = filename.trim();
-    if (!trimmed) return '';
-
-    const lower = trimmed.toLowerCase();
-    const isDotFile = lower.startsWith('.');
-    let sanitized = isDotFile ? lower.slice(1) : lower;
-
-    if (!sanitized) return '';
-    if (sanitized.endsWith('.')) {
-        sanitized = sanitized.slice(0, -1);
-        if (!sanitized) return '';
-    }
-
-    const lastDotIndex = sanitized.lastIndexOf('.');
-    if (lastDotIndex === -1) {
-        // 无扩展名文件处理
-        if (!isDotFile) {
-            // 只有在已知列表中的才识别为 Unix 可执行文件
-            if (UNIX_EXECUTABLE_NAMES.includes(sanitized)) {
-                return 'unix-executable';
-            }
-            // 其他无扩展名文件返回空字符串（不支持）
-            return '';
-        }
-        return isDotFile ? sanitized : '';
-    }
-
-    if (lastDotIndex === sanitized.length - 1) {
-        const withoutTrailingDot = sanitized.slice(0, lastDotIndex);
-        return withoutTrailingDot || '';
-    }
-
-    return sanitized.slice(lastDotIndex + 1);
-}
+// 导入真实的 app.js 模块
+const {
+    extractExtension,
+    UNIX_EXECUTABLE_NAMES,
+    SUPPORTED_FORMATS
+} = require('./app.js');
 
 // 测试案例
 console.log('=== 测试：无扩展名文件的扩展名检测 ===\n');
@@ -81,6 +44,7 @@ const testCases = [
 
 let passed = 0;
 let failed = 0;
+const failures = [];
 
 testCases.forEach(({ filename, expected, category }) => {
     const result = extractExtension(filename);
@@ -90,13 +54,21 @@ testCases.forEach(({ filename, expected, category }) => {
         passed++;
     } else {
         failed++;
-        console.log(`${status} [${category}]`);
+        failures.push({ filename, expected, result, category });
+    }
+});
+
+// 显示失败的测试
+if (failures.length > 0) {
+    console.log('失败的测试：\n');
+    failures.forEach(({ filename, expected, result, category }) => {
+        console.log(`❌ FAIL [${category}]`);
         console.log(`  文件名: "${filename}"`);
         console.log(`  期望: "${expected}"`);
         console.log(`  实际: "${result}"`);
         console.log();
-    }
-});
+    });
+}
 
 console.log(`\n=== 测试结果 ===`);
 console.log(`通过: ${passed}/${testCases.length}`);
@@ -108,6 +80,14 @@ if (failed === 0) {
     console.log('✅ 只有在 UNIX_EXECUTABLE_NAMES 列表中的文件被识别为 unix-executable');
     console.log('✅ README、CHANGELOG 等文档文件不再被误判为可执行文件');
     console.log('✅ 无扩展名的普通文件返回空字符串（触发"不支持的文件格式"提示）');
+
+    // 额外验证：确保测试的是真实代码
+    console.log('\n✅ 测试验证：');
+    console.log(`  - 使用真实的 extractExtension 函数（来自 app.js）`);
+    console.log(`  - 使用真实的 UNIX_EXECUTABLE_NAMES 常量（${UNIX_EXECUTABLE_NAMES.length} 个条目）`);
+    console.log(`  - 测试覆盖 ${testCases.length} 个场景`);
+
+    process.exit(0);
 } else {
     console.log('\n❌ 存在失败的测试');
     process.exit(1);

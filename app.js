@@ -266,64 +266,76 @@ const UNIX_EXECUTABLE_NAMES = [
 ];
 
 // ==================== DOM 元素 ====================
-const uploadArea = document.getElementById('uploadArea');
-const fileInput = document.getElementById('fileInput');
-const fileInfo = document.getElementById('fileInfo');
-const fileName = document.getElementById('fileName');
-const fileSize = document.getElementById('fileSize');
-const fileType = document.getElementById('fileType');
-const optionsSection = document.getElementById('optionsSection');
-const statusSection = document.getElementById('statusSection');
-const successSection = document.getElementById('successSection');
-const statusText = document.getElementById('statusText');
-const resetBtn = document.getElementById('resetBtn');
-const corruptBtn = document.getElementById('corruptBtn');
-const continueBtn = document.getElementById('continueBtn');
-const reportCard = document.getElementById('reportCard');
-const randomizeNameCheckbox = document.getElementById('randomizeName');
-const downloadReportCheckbox = document.getElementById('downloadReport');
-const embedSignatureCheckbox = document.getElementById('embedSignature');
 
+// 在浏览器环境中初始化 DOM 元素引用
+// 在 Node.js 测试环境中跳过（避免 ReferenceError）
+let uploadArea, fileInput, fileInfo, fileName, fileSize, fileType;
+let optionsSection, statusSection, successSection, statusText;
+let resetBtn, corruptBtn, continueBtn, reportCard;
+let randomizeNameCheckbox, downloadReportCheckbox, embedSignatureCheckbox;
 let lastCorruptionReport = null;
+
+if (typeof document !== 'undefined') {
+    uploadArea = document.getElementById('uploadArea');
+    fileInput = document.getElementById('fileInput');
+    fileInfo = document.getElementById('fileInfo');
+    fileName = document.getElementById('fileName');
+    fileSize = document.getElementById('fileSize');
+    fileType = document.getElementById('fileType');
+    optionsSection = document.getElementById('optionsSection');
+    statusSection = document.getElementById('statusSection');
+    successSection = document.getElementById('successSection');
+    statusText = document.getElementById('statusText');
+    resetBtn = document.getElementById('resetBtn');
+    corruptBtn = document.getElementById('corruptBtn');
+    continueBtn = document.getElementById('continueBtn');
+    reportCard = document.getElementById('reportCard');
+    randomizeNameCheckbox = document.getElementById('randomizeName');
+    downloadReportCheckbox = document.getElementById('downloadReport');
+    embedSignatureCheckbox = document.getElementById('embedSignature');
+}
 
 // ==================== 文件上传处理 ====================
 
-// 点击上传区域触发文件选择
-uploadArea.addEventListener('click', (e) => {
-    // 防止事件冒泡
-    if (e.target !== fileInput) {
+// 仅在浏览器环境中注册事件监听器
+if (typeof document !== 'undefined') {
+    // 点击上传区域触发文件选择
+    uploadArea.addEventListener('click', (e) => {
+        // 防止事件冒泡
+        if (e.target !== fileInput) {
+            e.preventDefault();
+            fileInput.click();
+        }
+    });
+
+    // 文件选择处理
+    fileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            handleFileSelect(files);
+        }
+    });
+
+    // 拖拽上传处理
+    uploadArea.addEventListener('dragover', (e) => {
         e.preventDefault();
-        fileInput.click();
-    }
-});
+        uploadArea.classList.add('dragover');
+    });
 
-// 文件选择处理
-fileInput.addEventListener('change', (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length > 0) {
-        handleFileSelect(files);
-    }
-});
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
 
-// 拖拽上传处理
-uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadArea.classList.add('dragover');
-});
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
 
-uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('dragover');
-});
-
-uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.classList.remove('dragover');
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-        handleFileSelect(files);
-    }
-});
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) {
+            handleFileSelect(files);
+        }
+    });
+}
 
 // ==================== 文件处理函数 ====================
 
@@ -569,17 +581,19 @@ function createSafeElement(tag, attributes = {}, textContent = '') {
 
 // ==================== 按钮事件处理 ====================
 
-/**
- * 重置按钮 - 重新选择文件
- */
-resetBtn.addEventListener('click', () => {
-    resetApp();
-});
+// 仅在浏览器环境中注册按钮事件
+if (typeof document !== 'undefined') {
+    /**
+     * 重置按钮 - 重新选择文件
+     */
+    resetBtn.addEventListener('click', () => {
+        resetApp();
+    });
 
-/**
- * 破坏文件按钮
- */
-corruptBtn.addEventListener('click', async () => {
+    /**
+     * 破坏文件按钮
+     */
+    corruptBtn.addEventListener('click', async () => {
     if (!selectedFiles || selectedFiles.length === 0) return;
 
     try {
@@ -630,12 +644,13 @@ corruptBtn.addEventListener('click', async () => {
     }
 });
 
-/**
- * 继续破坏其他文件按钮
- */
-continueBtn.addEventListener('click', () => {
-    resetApp();
-});
+    /**
+     * 继续破坏其他文件按钮
+     */
+    continueBtn.addEventListener('click', () => {
+        resetApp();
+    });
+} // 结束浏览器环境检查
 
 // ==================== 文件破坏核心逻辑 ====================
 
@@ -1520,4 +1535,29 @@ if (typeof document !== 'undefined') {
             console.log('已自动设置推荐速度档位:', performanceInfo.speed);
         }
     }
+}
+
+// ==================== 模块导出（用于测试） ====================
+
+// UMD 模式：支持浏览器和 Node.js
+// 在浏览器中：这些函数已在全局作用域中定义
+// 在 Node.js 中：通过 module.exports 导出供测试使用
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        // 核心函数
+        extractExtension,
+
+        // 常量
+        UNIX_EXECUTABLE_NAMES,
+        SPECIAL_EXTENSION_RULES,
+        FILE_CATEGORIES,
+        SUPPORTED_FORMATS,
+        MAX_FILE_SIZE,
+
+        // 辅助函数（可选，供测试使用）
+        formatFileSize,
+        getFileCategory,
+        getCategoryLabel,
+        getStrategyForCategory
+    };
 }
