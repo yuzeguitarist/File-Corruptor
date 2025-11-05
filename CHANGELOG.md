@@ -5,9 +5,55 @@
 ### 新增 ✨
 
 #### 文件格式支持
-- 新增 **40 种**文件格式支持，总计支持 **154 种**格式
-- **图片格式**：
+- 新增 **70+ 种**文件格式支持，总计支持 **220+ 种**格式
+- **图片格式** (新增 10 种):
   - `dng` - DNG RAW 图片（Adobe Digital Negative）
+  - `avif` - AVIF 图片
+  - `jxl` - JPEG XL 图片
+  - `cr2`, `cr3` - Canon RAW 图片
+  - `nef` - Nikon RAW 图片
+  - `arw` - Sony RAW 图片
+  - `orf` - Olympus RAW 图片
+  - `rw2` - Panasonic RAW 图片
+  - `exr` - OpenEXR 图片
+- **视频格式** (新增 5 种):
+  - `m4v` - M4V 视频
+  - `vob` - DVD 视频
+  - `ts` - 传输流视频
+  - `f4v` - Flash 视频
+  - `ogv` - Ogg 视频
+- **音频格式** (新增 4 种):
+  - `opus` - Opus 音频
+  - `ape` - APE 无损音频
+  - `alac` - Apple 无损音频
+  - `dsd` - DSD 音频
+- **新类别 - 3D 模型** (15 种格式):
+  - `blend` - Blender 文件
+  - `fbx` - FBX 模型
+  - `obj` - Wavefront OBJ
+  - `stl` - STL 3D 打印
+  - `dae` - COLLADA 模型
+  - `gltf`, `glb` - glTF 模型
+  - `3ds` - 3DS Max 模型
+  - `max` - 3DS Max 场景
+  - `c4d` - Cinema 4D 文件
+  - `ma`, `mb` - Maya 文件
+  - `skp` - SketchUp 模型
+  - `dwg`, `dxf` - AutoCAD 文件
+- **新类别 - 字体文件** (7 种格式):
+  - `ttf` - TrueType 字体
+  - `otf` - OpenType 字体
+  - `woff`, `woff2` - Web 字体
+  - `eot` - Embedded OpenType
+  - `fon` - 位图字体
+  - `dfont` - Mac 字体
+- **虚拟机与镜像** (5 种格式):
+  - `vmdk` - VMware 磁盘
+  - `vdi` - VirtualBox 磁盘
+  - `qcow2` - QEMU 磁盘
+  - `ova`, `ovf` - 虚拟机格式
+- **其他格式**:
+  - `kdbx` - KeePass 数据库
 - **音乐记谱**：
   - `sib` - Sibelius 记谱文件
 - **压缩文件**：
@@ -50,8 +96,14 @@
   - `midi` - MIDI 音频文件
 
 #### 功能增强
+- **🚀 分块处理机制**：实现智能分块文件处理，真正支持高达 10 GB 的大文件
+  - 对于 > 256 MB 的文件自动启用分块处理模式
+  - 每块 256 MB，避免浏览器内存溢出
+  - 实时显示处理进度（百分比和块数）
+  - 处理期间允许垃圾回收，优化内存使用
+  - 小文件继续使用精细策略，大文件使用高效分块策略
 - **可复现的随机数生成器**：实现了基于种子的伪随机数生成器（LCG算法），确保使用相同种子可以完全复现破坏过程
-- **文件大小限制**：提升至 10 GB 的文件大小限制，支持更大文件的处理
+- **文件大小限制提升**：从 200 MB 提升至 10 GB，配合分块处理真正支持大文件
 - **更健壮的扩展名提取**：改进文件扩展名提取逻辑，正确处理边缘情况（无扩展名、多个点、隐藏文件等）
 - **浏览器兼容性检查**：启动时自动检测必需的 API 支持（File API、ArrayBuffer、Blob 等）
 

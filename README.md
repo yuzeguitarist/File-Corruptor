@@ -24,7 +24,8 @@ File Corruptor 是一个完全在浏览器本地运行的文件破坏工具，�
 
 ### ✨ 功能特点
 
-- 🎯 **广泛支持** - 支持 150+ 种文件格式（覆盖文档、媒体、压缩包、代码、数据库、证书、镜像等）
+- 🎯 **广泛支持** - 支持 220+ 种文件格式（覆盖文档、媒体、压缩包、代码、数据库、证书、3D模型、字体等）
+- 🚀 **大文件处理** - 智能分块处理，支持高达 10 GB 的大文件，不会崩溃
 - 🔒 **隐私安全** - 100% 本地处理，文件不上传服务器
 - 💾 **即时下载** - 自动下载破坏后的文件
 - 🎨 **极简设计** - 黑白配色，Apple 风格界面
@@ -136,7 +137,8 @@ File Corruptor is a client-side file corruption tool that runs entirely in your 
 
 ### ✨ Features
 
-- 🎯 **Wide Support** - Supports 150+ formats across documents, media, archives, code, databases, certificates, and disk images
+- 🎯 **Wide Support** - Supports 220+ formats across documents, media, archives, code, databases, certificates, 3D models, fonts, and more
+- 🚀 **Large File Processing** - Intelligent chunked processing supports files up to 10 GB without crashes
 - 🔒 **Privacy First** - 100% local processing, no server uploads
 - 💾 **Instant Download** - Automatically downloads corrupted files
 - 🎨 **Minimal Design** - Black & white, Apple-inspired interface

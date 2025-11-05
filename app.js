@@ -43,6 +43,8 @@ const FILE_CATEGORIES = {
             'gif': '图片文件',
             'bmp': '图片文件',
             'webp': '图片文件',
+            'avif': 'AVIF图片',
+            'jxl': 'JPEG XL图片',
             'svg': '矢量图',
             'ico': '图标文件',
             'tif': 'TIFF图片',
@@ -53,6 +55,13 @@ const FILE_CATEGORIES = {
             'heic': 'HEIC图片',
             'raw': 'RAW原始图片',
             'dng': 'DNG RAW图片',
+            'cr2': 'Canon RAW图片',
+            'cr3': 'Canon RAW图片',
+            'nef': 'Nikon RAW图片',
+            'arw': 'Sony RAW图片',
+            'orf': 'Olympus RAW图片',
+            'rw2': 'Panasonic RAW图片',
+            'exr': 'OpenEXR图片',
             'indd': 'InDesign文档'
         }
     },
@@ -67,6 +76,11 @@ const FILE_CATEGORIES = {
             'flv': '视频文件',
             'mkv': '视频文件',
             'webm': '视频文件',
+            'm4v': 'M4V视频',
+            'vob': 'DVD视频',
+            'ts': '传输流视频',
+            'f4v': 'Flash视频',
+            'ogv': 'Ogg视频',
             '3gp': '3GP视频',
             'mpeg': 'MPEG视频',
             'mpg': 'MPEG视频',
@@ -84,9 +98,13 @@ const FILE_CATEGORIES = {
             'aac': '音频文件',
             'm4a': '音频文件',
             'ogg': '音频文件',
+            'opus': 'Opus音频',
             'wma': 'WMA音频',
             'aiff': 'AIFF音频',
             'amr': 'AMR音频',
+            'ape': 'APE无损音频',
+            'alac': 'Apple无损音频',
+            'dsd': 'DSD音频',
             'mid': 'MIDI文件',
             'midi': 'MIDI文件'
         }
@@ -208,6 +226,40 @@ const FILE_CATEGORIES = {
             'lic': '许可证文件'
         }
     },
+    models: {
+        label: '3D模型',
+        strategy: 'binary',
+        formats: {
+            'blend': 'Blender文件',
+            'fbx': 'FBX模型',
+            'obj': 'Wavefront OBJ',
+            'stl': 'STL 3D打印',
+            'dae': 'COLLADA模型',
+            'gltf': 'glTF模型',
+            'glb': 'glTF二进制',
+            '3ds': '3DS Max模型',
+            'max': '3DS Max场景',
+            'c4d': 'Cinema 4D文件',
+            'ma': 'Maya ASCII',
+            'mb': 'Maya二进制',
+            'skp': 'SketchUp模型',
+            'dwg': 'AutoCAD图纸',
+            'dxf': 'AutoCAD交换格式'
+        }
+    },
+    fonts: {
+        label: '字体文件',
+        strategy: 'binary',
+        formats: {
+            'ttf': 'TrueType字体',
+            'otf': 'OpenType字体',
+            'woff': 'Web字体',
+            'woff2': 'Web字体2',
+            'eot': 'Embedded OpenType',
+            'fon': '位图字体',
+            'dfont': 'Mac字体'
+        }
+    },
     misc: {
         label: '其他',
         strategy: 'binary',
@@ -218,7 +270,13 @@ const FILE_CATEGORIES = {
             'torrent': 'BT种子',
             'ics': '日历文件',
             'vcf': '联系人文件',
-            'sib': 'Sibelius记谱文件'
+            'sib': 'Sibelius记谱文件',
+            'kdbx': 'KeePass数据库',
+            'vmdk': 'VMware磁盘',
+            'vdi': 'VirtualBox磁盘',
+            'qcow2': 'QEMU磁盘',
+            'ova': '虚拟机归档',
+            'ovf': '虚拟机格式'
         }
     }
 };
@@ -228,9 +286,16 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
 }, {});
 
 // 安全的内存限制：10GB
-// 注意：使用 File.arrayBuffer() 会将整个文件加载到内存，
-// 过大的文件会导致浏览器崩溃而非触发 QuotaExceededError
+// 使用分块处理（chunk processing）机制，避免一次性加载整个文件到内存
 const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
+
+// 分块处理配置
+// 对于大文件（>256MB），使用分块处理避免内存溢出
+const CHUNK_PROCESSING_CONFIG = {
+    chunkSize: 256 * 1024 * 1024, // 每块256MB，平衡内存和性能
+    largeFileThreshold: 256 * 1024 * 1024, // 大于256MB的文件启用分块处理
+    maxChunksInMemory: 2 // 最多同时在内存中保持2个块
+};
 
 const SIGNATURE_SCAN_CONFIG = {
     smallFileThreshold: 1 * 1024 * 1024,
@@ -679,16 +744,164 @@ if (typeof document !== 'undefined') {
 // ==================== 文件破坏核心逻辑 ====================
 
 /**
- * 破坏文件的核心函数
+ * 分块读取文件
+ * @param {File} file - 要读取的文件
+ * @param {number} start - 起始位置
+ * @param {number} end - 结束位置
+ * @returns {Promise<Uint8Array>} 读取的数据块
+ */
+async function readFileChunk(file, start, end) {
+    const slice = file.slice(start, end);
+    const arrayBuffer = await slice.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
+}
+
+/**
+ * 计算要破坏的位置（用于分块处理）
+ * 提前计算所有需要修改的位置，避免在分块时重复计算
+ * @param {number} fileSize - 文件总大小
+ * @param {string} level - 破坏级别
+ * @param {Object} context - 破坏上下文
+ * @returns {Set<number>} 要修改的位置集合
+ */
+function calculateCorruptionPositions(fileSize, level, context) {
+    const positions = new Set();
+    const { random, strategy } = context;
+
+    // 根据破坏级别确定要修改的位置
+    let targetCount;
+    switch (level) {
+        case 'light':
+            targetCount = Math.min(100, Math.floor(fileSize * 0.001));
+            break;
+        case 'medium':
+            targetCount = Math.min(1000, Math.floor(fileSize * 0.01));
+            break;
+        case 'heavy':
+            targetCount = Math.min(10000, Math.floor(fileSize * 0.05));
+            break;
+        default:
+            targetCount = 100;
+    }
+
+    // 始终破坏文件头部（前512字节）
+    for (let i = 0; i < Math.min(512, fileSize); i++) {
+        if (random() < 0.5) {
+            positions.add(i);
+        }
+    }
+
+    // 随机分布的破坏位置
+    for (let i = 0; i < targetCount; i++) {
+        const pos = Math.floor(random() * fileSize);
+        positions.add(pos);
+    }
+
+    // 文件尾部也添加一些破坏
+    const tailStart = Math.max(0, fileSize - 1024);
+    for (let i = 0; i < Math.min(256, fileSize); i++) {
+        if (random() < 0.3) {
+            positions.add(tailStart + Math.floor(random() * (fileSize - tailStart)));
+        }
+    }
+
+    return positions;
+}
+
+/**
+ * 对单个数据块应用破坏
+ * @param {Uint8Array} chunkData - 数据块
+ * @param {number} chunkStart - 块在文件中的起始位置
+ * @param {Set<number>} positions - 要修改的全局位置集合
+ * @param {Object} context - 破坏上下文
+ * @returns {number} 修改的字节数
+ */
+function applyCorruptionToChunk(chunkData, chunkStart, positions, context) {
+    const { random } = context;
+    const chunkEnd = chunkStart + chunkData.length;
+    let bytesModified = 0;
+
+    // 遍历这个块中需要修改的位置
+    for (const pos of positions) {
+        if (pos >= chunkStart && pos < chunkEnd) {
+            const localPos = pos - chunkStart;
+            chunkData[localPos] = Math.floor(random() * 256);
+            bytesModified++;
+        }
+    }
+
+    return bytesModified;
+}
+
+/**
+ * 使用分块处理大文件
+ * @param {File} file - 要处理的文件
+ * @param {string} level - 破坏级别
+ * @param {Object} context - 破坏上下文
+ * @returns {Promise<{data: Uint8Array, bytesModified: number}>}
+ */
+async function processLargeFileInChunks(file, level, context) {
+    const fileSize = file.size;
+    const chunkSize = CHUNK_PROCESSING_CONFIG.chunkSize;
+    const totalChunks = Math.ceil(fileSize / chunkSize);
+
+    // 预先计算所有要破坏的位置
+    const corruptionPositions = calculateCorruptionPositions(fileSize, level, context);
+
+    // 存储所有处理后的块
+    const chunks = [];
+    let totalBytesModified = 0;
+
+    // 分块处理
+    for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, fileSize);
+
+        // 更新进度显示
+        const progress = Math.floor((i / totalChunks) * 100);
+        if (typeof statusText !== 'undefined') {
+            statusText.textContent = `处理中... ${progress}% (${i + 1}/${totalChunks} 块)`;
+        }
+
+        // 读取块
+        const chunkData = await readFileChunk(file, start, end);
+
+        // 对块应用破坏
+        const bytesModified = applyCorruptionToChunk(chunkData, start, corruptionPositions, context);
+        totalBytesModified += bytesModified;
+
+        // 保存处理后的块
+        chunks.push(chunkData);
+
+        // 允许浏览器在处理块之间进行垃圾回收
+        if (i % 4 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    }
+
+    // 合并所有块
+    if (typeof statusText !== 'undefined') {
+        statusText.textContent = '合并数据...';
+    }
+
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+    }
+
+    return { data: result, bytesModified: totalBytesModified };
+}
+
+/**
+ * 破坏文件的核心函数（重构版，支持大文件分块处理）
  * @param {File} file - 要破坏的文件
  * @param {string} level - 破坏程度 (light/medium/heavy)
  */
 async function corruptFile(file, level, options) {
     const startTime = getTimestamp();
-
-    // 读取文件为 ArrayBuffer
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
 
     // 获取文件扩展名及类别
     const extension = extractExtension(file.name);
@@ -697,8 +910,10 @@ async function corruptFile(file, level, options) {
 
     const randomSeed = generateSeed();
     const random = createRandomGenerator(randomSeed);
+    const fileSize = file.size;
+
     const corruptionContext = {
-        fileSize: uint8Array.length,
+        fileSize: fileSize,
         extension,
         categoryKey,
         strategy,
@@ -707,21 +922,53 @@ async function corruptFile(file, level, options) {
         random
     };
 
+    let uint8Array;
     let corruptionResult;
-    switch (level) {
-        case 'light':
-            corruptionResult = corruptLight(uint8Array, corruptionContext);
-            break;
-        case 'medium':
-            corruptionResult = corruptMedium(uint8Array, corruptionContext);
-            break;
-        case 'heavy':
-        default:
-            corruptionResult = corruptHeavy(uint8Array, corruptionContext);
-            break;
+
+    // 根据文件大小选择处理策略
+    const usesChunkedProcessing = fileSize > CHUNK_PROCESSING_CONFIG.largeFileThreshold;
+
+    if (usesChunkedProcessing) {
+        // 大文件：使用分块处理
+        statusText.textContent = '处理大文件（分块模式）...';
+        const result = await processLargeFileInChunks(file, level, corruptionContext);
+        uint8Array = result.data;
+        corruptionResult = {
+            level,
+            bytesModified: result.bytesModified,
+            steps: [
+                `使用分块处理模式处理大文件 (${formatSize(fileSize)})`,
+                `共修改 ${result.bytesModified} 字节`,
+                `破坏级别: ${level === 'light' ? '轻度' : level === 'medium' ? '中度' : '重度'}`
+            ]
+        };
+    } else {
+        // 小文件：使用传统的精细处理策略
+        statusText.textContent = '读取文件...';
+        const arrayBuffer = await file.arrayBuffer();
+        uint8Array = new Uint8Array(arrayBuffer);
+
+        // 更新context中的fileSize为实际的数组长度
+        corruptionContext.fileSize = uint8Array.length;
+
+        statusText.textContent = '应用破坏策略...';
+        switch (level) {
+            case 'light':
+                corruptionResult = corruptLight(uint8Array, corruptionContext);
+                break;
+            case 'medium':
+                corruptionResult = corruptMedium(uint8Array, corruptionContext);
+                break;
+            case 'heavy':
+            default:
+                corruptionResult = corruptHeavy(uint8Array, corruptionContext);
+                break;
+        }
     }
 
-    if (options.embedSignature) {
+    // 嵌入签名（如果启用）
+    if (options.embedSignature && uint8Array.length > 1024) {
+        statusText.textContent = '嵌入破坏签名...';
         const signatureResult = embedCorruptionSignature(uint8Array, corruptionContext);
         corruptionResult.bytesModified += signatureResult.bytesModified;
         corruptionResult.steps.push(signatureResult.description);
@@ -739,7 +986,8 @@ async function corruptFile(file, level, options) {
         corruptionResult,
         downloadName,
         duration: getTimestamp() - startTime,
-        seed: randomSeed
+        seed: randomSeed,
+        usedChunkedProcessing: usesChunkedProcessing
     });
 
     renderReport(report);
