@@ -285,16 +285,18 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
     return { ...all, ...category.formats };
 }, {});
 
-// 安全的内存限制：10GB
-// 使用分块处理（chunk processing）机制，避免一次性加载整个文件到内存
-const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
+// 现实的内存限制：2GB
+// 使用分块处理（chunk processing）机制，但仍需在Blob创建前保持所有块引用
+// 2GB = 8个256MB块，这是现代浏览器可以合理处理的上限
+// 注意：即使使用Blob，所有块在合并前仍在内存中
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
 // 分块处理配置
-// 对于大文件（>256MB），使用分块处理避免内存溢出
 const CHUNK_PROCESSING_CONFIG = {
-    chunkSize: 256 * 1024 * 1024, // 每块256MB，平衡内存和性能
+    chunkSize: 256 * 1024 * 1024, // 每块256MB
     largeFileThreshold: 256 * 1024 * 1024, // 大于256MB的文件启用分块处理
-    maxChunksInMemory: 2 // 最多同时在内存中保持2个块
+    maxChunksInMemory: 2, // 未强制执行（浏览器限制）
+    maxIterationsPerChunk: 10 * 1000 * 1000 // 每块最多1000万次迭代，避免锁死
 };
 
 const SIGNATURE_SCAN_CONFIG = {
@@ -804,14 +806,34 @@ function applyCorruptionToChunk(chunkData, chunkStart, chunkBudget, level, conte
         }
     }
 
-    // 在块内随机分布破坏（使用预算，减去已破坏的字节）
+    // 在块内随机分布破坏（性能优化版本）
     const remainingBudget = Math.max(0, chunkBudget - bytesModified);
-    const intervalsCount = Math.min(remainingBudget, chunkSize);
 
-    for (let i = 0; i < intervalsCount; i++) {
-        const localPos = Math.floor(random() * chunkSize);
-        chunkData[localPos] = Math.floor(random() * 256);
-        bytesModified++;
+    // 性能限制：避免数亿次迭代锁死浏览器
+    // 对于大预算，使用区间破坏而非逐字节
+    const maxIterations = CHUNK_PROCESSING_CONFIG.maxIterationsPerChunk;
+
+    if (remainingBudget > maxIterations) {
+        // 大预算：使用区间破坏（高效）
+        const numIntervals = Math.min(100, Math.ceil(chunkSize / 10000)); // 最多100个区间
+        const intervalSize = Math.floor(chunkSize / numIntervals);
+
+        for (let i = 0; i < numIntervals; i++) {
+            const intervalStart = i * intervalSize;
+            const intervalEnd = Math.min((i + 1) * intervalSize, chunkSize);
+            const probability = Math.min(1.0, remainingBudget / chunkSize); // 破坏概率
+
+            bytesModified += randomizeRange(chunkData, intervalStart, intervalEnd, probability, random);
+        }
+    } else {
+        // 小预算：逐字节破坏（精确）
+        const intervalsCount = Math.min(remainingBudget, chunkSize);
+
+        for (let i = 0; i < intervalsCount; i++) {
+            const localPos = Math.floor(random() * chunkSize);
+            chunkData[localPos] = Math.floor(random() * 256);
+            bytesModified++;
+        }
     }
 
     return bytesModified;
