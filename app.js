@@ -52,6 +52,7 @@ const FILE_CATEGORIES = {
             'eps': 'EPS矢量文件',
             'heic': 'HEIC图片',
             'raw': 'RAW原始图片',
+            'dng': 'DNG RAW图片',
             'indd': 'InDesign文档'
         }
     },
@@ -226,10 +227,10 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
     return { ...all, ...category.formats };
 }, {});
 
-// 安全的内存限制：200MB
+// 安全的内存限制：10GB
 // 注意：使用 File.arrayBuffer() 会将整个文件加载到内存，
 // 过大的文件会导致浏览器崩溃而非触发 QuotaExceededError
-const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
 
 const SIGNATURE_SCAN_CONFIG = {
     smallFileThreshold: 1 * 1024 * 1024,
