@@ -275,6 +275,9 @@ let resetBtn, corruptBtn, continueBtn, reportCard;
 let randomizeNameCheckbox, downloadReportCheckbox, embedSignatureCheckbox;
 let lastCorruptionReport = null;
 
+// 存储动画相关的 timeout IDs，用于取消机制
+let animationTimeouts = [];
+
 if (typeof document !== 'undefined') {
     uploadArea = document.getElementById('uploadArea');
     fileInput = document.getElementById('fileInput');
@@ -1489,14 +1492,15 @@ function playPrinterAnimation(fileFormat, callback) {
     // 重置动画状态
     animatedPaper.classList.remove('ejecting');
     paperShards.innerHTML = '';
+    animatedPaper.style.opacity = '1'; // 重置透明度
 
     // 延迟一点开始动画，确保DOM已更新
-    setTimeout(() => {
+    const timeout1 = setTimeout(() => {
         // 开始纸张吐出动画
         animatedPaper.classList.add('ejecting');
 
         // 1.2秒后（纸张吐出完成），开始碎裂动画
-        setTimeout(() => {
+        const timeout2 = setTimeout(() => {
             // 创建8个碎片
             const shardPositions = [
                 { x: -20, y: -20, rotation: -15 },
@@ -1532,21 +1536,32 @@ function playPrinterAnimation(fileFormat, callback) {
                 paperShards.appendChild(shard);
 
                 // 延迟添加动画类，创建交错效果
-                setTimeout(() => {
+                const timeout = setTimeout(() => {
                     shard.style.opacity = '1';
                 }, index * 20);
+                animationTimeouts.push(timeout);
             });
 
             // 隐藏完整的纸张
             animatedPaper.style.opacity = '0';
 
             // 碎片动画持续0.8秒，再等0.3秒后调用回调
-            setTimeout(() => {
-                printerAnimation.style.display = 'none';
-                if (callback) callback();
+            const timeout3 = setTimeout(() => {
+                // 在执行回调前，检查是否仍有有效的选中文件
+                // 如果用户在动画播放期间点击了重置，selectedFiles 会被清空
+                if (selectedFiles && selectedFiles.length > 0) {
+                    printerAnimation.style.display = 'none';
+                    if (callback) callback();
+                } else {
+                    // 用户已重置，只隐藏动画，不执行回调
+                    printerAnimation.style.display = 'none';
+                }
             }, 1100);
+            animationTimeouts.push(timeout3);
         }, 1200);
+        animationTimeouts.push(timeout2);
     }, 100);
+    animationTimeouts.push(timeout1);
 }
 
 /**
@@ -1576,8 +1591,13 @@ function generateRandomPolygon(width, height) {
  * 重置应用到初始状态
  */
 function resetApp() {
+    // 清空文件选择（这会导致动画回调中的检查失败）
     selectedFiles = [];
     fileInput.value = '';
+
+    // 取消所有待执行的动画回调
+    animationTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    animationTimeouts = [];
 
     // 隐藏所有区域
     fileInfo.style.display = 'none';
