@@ -838,11 +838,11 @@ function applyCorruptionToChunk(chunkData, chunkStart, chunkBudget, context) {
 }
 
 /**
- * 使用分块处理大文件
+ * 使用分块处理大文件（内存优化版本，使用Blob）
  * @param {File} file - 要处理的文件
  * @param {string} level - 破坏级别
  * @param {Object} context - 破坏上下文
- * @returns {Promise<{data: Uint8Array, bytesModified: number}>}
+ * @returns {Promise<{data: Blob, bytesModified: number}>}
  */
 async function processLargeFileInChunks(file, level, context) {
     const fileSize = file.size;
@@ -866,8 +866,8 @@ async function processLargeFileInChunks(file, level, context) {
     }
     totalTargetCount = Math.min(totalTargetCount, fileSize);
 
-    // 存储所有处理后的块
-    const chunks = [];
+    // 使用BlobParts数组，让浏览器管理内存
+    const blobParts = [];
     let totalBytesModified = 0;
 
     // 分块处理
@@ -875,6 +875,7 @@ async function processLargeFileInChunks(file, level, context) {
         const start = i * chunkSize;
         const end = Math.min(start + chunkSize, fileSize);
         const currentChunkSize = end - start;
+        const isLastChunk = (i === totalChunks - 1);
 
         // 计算这个块的预算：按比例分配
         const chunkBudget = Math.floor(currentChunkSize / fileSize * totalTargetCount);
@@ -892,8 +893,17 @@ async function processLargeFileInChunks(file, level, context) {
         const bytesModified = applyCorruptionToChunk(chunkData, start, chunkBudget, context);
         totalBytesModified += bytesModified;
 
-        // 保存处理后的块
-        chunks.push(chunkData);
+        // 如果是最后一个块且需要嵌入签名，在这个块中嵌入
+        if (isLastChunk && context.options.embedSignature && chunkData.length > 1024) {
+            const signatureResult = embedCorruptionSignature(chunkData, context);
+            totalBytesModified += signatureResult.bytesModified;
+        }
+
+        // 将处理后的块添加到BlobParts（浏览器管理内存）
+        blobParts.push(chunkData);
+
+        // 清空引用，允许垃圾回收
+        // 注意：chunkData 仍被 blobParts 引用，但浏览器会优化 Blob 存储
 
         // 允许浏览器在处理块之间进行垃圾回收
         if (i % 4 === 0) {
@@ -901,20 +911,14 @@ async function processLargeFileInChunks(file, level, context) {
         }
     }
 
-    // 合并所有块
+    // 创建最终Blob（浏览器内部优化，不会复制所有数据到内存）
     if (typeof statusText !== 'undefined') {
         statusText.textContent = '合并数据...';
     }
 
-    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.length;
-    }
+    const resultBlob = new Blob(blobParts, { type: 'application/octet-stream' });
 
-    return { data: result, bytesModified: totalBytesModified };
+    return { data: resultBlob, bytesModified: totalBytesModified };
 }
 
 /**
@@ -944,60 +948,68 @@ async function corruptFile(file, level, options) {
         random
     };
 
-    let uint8Array;
+    let dataResult; // 可以是 Uint8Array 或 Blob
     let corruptionResult;
 
     // 根据文件大小选择处理策略
     const usesChunkedProcessing = fileSize > CHUNK_PROCESSING_CONFIG.largeFileThreshold;
 
     if (usesChunkedProcessing) {
-        // 大文件：使用分块处理
+        // 大文件：使用分块处理（返回Blob）
         statusText.textContent = '处理大文件（分块模式）...';
         const result = await processLargeFileInChunks(file, level, corruptionContext);
-        uint8Array = result.data;
+        dataResult = result.data; // Blob
+
+        const stepsArray = [
+            `使用分块处理模式处理大文件 (${formatFileSize(fileSize)})`,
+            `共修改 ${result.bytesModified} 字节`,
+            `破坏级别: ${level === 'light' ? '轻度' : level === 'medium' ? '中度' : '重度'}`
+        ];
+
+        // 如果嵌入了签名，添加到步骤中
+        if (options.embedSignature) {
+            stepsArray.push('在最后一个数据块中嵌入破坏签名');
+        }
+
         corruptionResult = {
             level,
             bytesModified: result.bytesModified,
-            steps: [
-                `使用分块处理模式处理大文件 (${formatFileSize(fileSize)})`,
-                `共修改 ${result.bytesModified} 字节`,
-                `破坏级别: ${level === 'light' ? '轻度' : level === 'medium' ? '中度' : '重度'}`
-            ]
+            steps: stepsArray
         };
     } else {
-        // 小文件：使用传统的精细处理策略
+        // 小文件：使用传统的精细处理策略（返回Uint8Array）
         statusText.textContent = '读取文件...';
         const arrayBuffer = await file.arrayBuffer();
-        uint8Array = new Uint8Array(arrayBuffer);
+        dataResult = new Uint8Array(arrayBuffer);
 
         // 更新context中的fileSize为实际的数组长度
-        corruptionContext.fileSize = uint8Array.length;
+        corruptionContext.fileSize = dataResult.length;
 
         statusText.textContent = '应用破坏策略...';
         switch (level) {
             case 'light':
-                corruptionResult = corruptLight(uint8Array, corruptionContext);
+                corruptionResult = corruptLight(dataResult, corruptionContext);
                 break;
             case 'medium':
-                corruptionResult = corruptMedium(uint8Array, corruptionContext);
+                corruptionResult = corruptMedium(dataResult, corruptionContext);
                 break;
             case 'heavy':
             default:
-                corruptionResult = corruptHeavy(uint8Array, corruptionContext);
+                corruptionResult = corruptHeavy(dataResult, corruptionContext);
                 break;
+        }
+
+        // 嵌入签名（仅对小文件，大文件已在分块处理中嵌入）
+        if (options.embedSignature && dataResult.length > 1024) {
+            statusText.textContent = '嵌入破坏签名...';
+            const signatureResult = embedCorruptionSignature(dataResult, corruptionContext);
+            corruptionResult.bytesModified += signatureResult.bytesModified;
+            corruptionResult.steps.push(signatureResult.description);
         }
     }
 
-    // 嵌入签名（如果启用）
-    if (options.embedSignature && uint8Array.length > 1024) {
-        statusText.textContent = '嵌入破坏签名...';
-        const signatureResult = embedCorruptionSignature(uint8Array, corruptionContext);
-        corruptionResult.bytesModified += signatureResult.bytesModified;
-        corruptionResult.steps.push(signatureResult.description);
-    }
-
     statusText.textContent = '破坏完成，正在准备下载...';
-    const downloadName = downloadCorruptedFile(uint8Array, file.name, options);
+    const downloadName = downloadCorruptedFile(dataResult, file.name, options);
     const report = buildCorruptionReport({
         file,
         level,
@@ -1225,8 +1237,10 @@ function corruptHeavy(data, context) {
  * @param {string} originalName - 原始文件名
  */
 function downloadCorruptedFile(data, originalName, options = {}) {
-    // 创建 Blob 对象
-    const blob = new Blob([data], { type: 'application/octet-stream' });
+    // 如果 data 已经是 Blob，直接使用；否则创建 Blob
+    const blob = (data instanceof Blob)
+        ? data
+        : new Blob([data], { type: 'application/octet-stream' });
 
     // 创建下载链接
     const url = URL.createObjectURL(blob);
