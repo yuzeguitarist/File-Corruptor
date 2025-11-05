@@ -937,7 +937,7 @@ async function corruptFile(file, level, options) {
             level,
             bytesModified: result.bytesModified,
             steps: [
-                `使用分块处理模式处理大文件 (${formatSize(fileSize)})`,
+                `使用分块处理模式处理大文件 (${formatFileSize(fileSize)})`,
                 `共修改 ${result.bytesModified} 字节`,
                 `破坏级别: ${level === 'light' ? '轻度' : level === 'medium' ? '中度' : '重度'}`
             ]
