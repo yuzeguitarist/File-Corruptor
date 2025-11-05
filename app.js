@@ -614,8 +614,8 @@ if (typeof document !== 'undefined') {
             const extension = extractExtension(file.name);
             const displayFormat = extension ? extension.toUpperCase() : 'FILE';
 
-            // 估算处理时间（至少1秒）
-            const estimatedTime = Math.max(1000, Math.min(delay, 800));
+            // 估算处理时间（至少1秒，根据实际delay延长）
+            const estimatedTime = Math.max(1000, delay);
 
             // 启动碎纸机动画和文件破坏同时进行
             const animationPromise = playShredderAnimation(displayFormat, level, estimatedTime);
