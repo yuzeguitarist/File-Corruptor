@@ -757,78 +757,58 @@ async function readFileChunk(file, start, end) {
 }
 
 /**
- * 计算要破坏的位置（用于分块处理）
- * 提前计算所有需要修改的位置，避免在分块时重复计算
- * @param {number} fileSize - 文件总大小
- * @param {string} level - 破坏级别
- * @param {Object} context - 破坏上下文
- * @returns {Set<number>} 要修改的位置集合
- */
-function calculateCorruptionPositions(fileSize, level, context) {
-    const positions = new Set();
-    const { random, strategy } = context;
-
-    // 根据破坏级别确定要修改的位置数量（与文件大小成比例）
-    let targetCount;
-    switch (level) {
-        case 'light':
-            // 轻度：约 0.1% 的字节
-            targetCount = Math.floor(fileSize * 0.001);
-            break;
-        case 'medium':
-            // 中度：约 1% 的字节
-            targetCount = Math.floor(fileSize * 0.01);
-            break;
-        case 'heavy':
-            // 重度：约 40% 的字节（30%-55% 范围内）
-            targetCount = Math.floor(fileSize * 0.40);
-            break;
-        default:
-            targetCount = Math.floor(fileSize * 0.001);
-    }
-
-    // 限制到文件大小，确保不超过
-    targetCount = Math.min(targetCount, fileSize);
-
-    // 始终破坏文件头部（前512字节）
-    for (let i = 0; i < Math.min(512, fileSize); i++) {
-        if (random() < 0.5) {
-            positions.add(i);
-        }
-    }
-
-    // 随机分布的破坏位置
-    for (let i = 0; i < targetCount; i++) {
-        const pos = Math.floor(random() * fileSize);
-        positions.add(pos);
-    }
-
-    // 文件尾部也添加一些破坏
-    const tailStart = Math.max(0, fileSize - 1024);
-    for (let i = 0; i < Math.min(256, fileSize); i++) {
-        if (random() < 0.3) {
-            positions.add(tailStart + Math.floor(random() * (fileSize - tailStart)));
-        }
-    }
-
-    return positions;
-}
-
-/**
- * 对单个数据块应用破坏（优化版，使用每块预算）
+ * 对单个数据块应用智能破坏（策略感知版本）
  * @param {Uint8Array} chunkData - 数据块
  * @param {number} chunkStart - 块在文件中的起始位置
  * @param {number} chunkBudget - 这个块应该破坏的字节数
+ * @param {string} level - 破坏级别
  * @param {Object} context - 破坏上下文
  * @returns {number} 修改的字节数
  */
-function applyCorruptionToChunk(chunkData, chunkStart, chunkBudget, context) {
-    const { random } = context;
+function applyCorruptionToChunk(chunkData, chunkStart, chunkBudget, level, context) {
+    const { random, strategy, extension } = context;
     const chunkSize = chunkData.length;
+    const isFirstChunk = (chunkStart === 0);
     let bytesModified = 0;
 
-    // 在这个块内随机生成要破坏的位置
-    for (let i = 0; i < chunkBudget; i++) {
+    // 第一个块：应用头部和签名破坏（格式感知）
+    if (isFirstChunk) {
+        if (strategy === 'archive') {
+            // 破坏归档文件头部
+            const headerSize = Math.min(64, chunkSize);
+            bytesModified += mutateHeader(chunkData, headerSize, level === 'heavy' ? 1 : 0.8, random);
+
+            // 特定格式的签名破坏
+            if (extension === 'zip' && chunkSize > 4) {
+                bytesModified += corruptSignature(chunkData, [0x50, 0x4B], 1, random);
+            } else if (extension === 'rar' && chunkSize > 4) {
+                bytesModified += corruptSignature(chunkData, [0x52, 0x61, 0x72, 0x21], 1, random);
+            } else if (extension === '7z' && chunkSize > 4) {
+                bytesModified += corruptSignature(chunkData, [0x37, 0x7A, 0xBC, 0xAF], 1, random);
+            }
+        } else if (strategy === 'text') {
+            // 文本文件：注入破坏标记
+            const encoder = new TextEncoder();
+            const headline = encoder.encode('/* FILE CORRUPTED */');
+            if (chunkSize > headline.length) {
+                bytesModified += writePattern(chunkData, 0, headline);
+            }
+        } else if (strategy === 'media') {
+            // 媒体文件：破坏头部信息
+            const headerSize = Math.min(48, chunkSize);
+            bytesModified += mutateHeader(chunkData, headerSize, 0.8, random);
+        } else {
+            // 其他文件：破坏文件头
+            const headerSize = Math.min(32, chunkSize);
+            bytesModified += randomizeRange(chunkData, 0, headerSize, 1, random);
+        }
+    }
+
+    // 在块内随机分布破坏（使用预算，减去已破坏的字节）
+    const remainingBudget = Math.max(0, chunkBudget - bytesModified);
+    const intervalsCount = Math.min(remainingBudget, chunkSize);
+
+    for (let i = 0; i < intervalsCount; i++) {
         const localPos = Math.floor(random() * chunkSize);
         chunkData[localPos] = Math.floor(random() * 256);
         bytesModified++;
@@ -870,55 +850,71 @@ async function processLargeFileInChunks(file, level, context) {
     const blobParts = [];
     let totalBytesModified = 0;
 
-    // 分块处理
-    for (let i = 0; i < totalChunks; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, fileSize);
-        const currentChunkSize = end - start;
-        const isLastChunk = (i === totalChunks - 1);
+    try {
+        // 分块处理
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, fileSize);
+            const currentChunkSize = end - start;
+            const isLastChunk = (i === totalChunks - 1);
 
-        // 计算这个块的预算：按比例分配
-        const chunkBudget = Math.floor(currentChunkSize / fileSize * totalTargetCount);
+            // 计算这个块的预算：按比例分配
+            const chunkBudget = Math.floor(currentChunkSize / fileSize * totalTargetCount);
 
-        // 更新进度显示
-        const progress = Math.floor((i / totalChunks) * 100);
+            // 更新进度显示
+            const progress = Math.floor((i / totalChunks) * 100);
+            if (typeof statusText !== 'undefined') {
+                statusText.textContent = `处理中... ${progress}% (${i + 1}/${totalChunks} 块)`;
+            }
+
+            // 读取块（添加错误处理）
+            let chunkData;
+            try {
+                chunkData = await readFileChunk(file, start, end);
+            } catch (readError) {
+                throw new Error(`读取文件块 ${i + 1}/${totalChunks} 失败: ${readError.message}`);
+            }
+
+            // 对块应用智能破坏（传递 level 参数）
+            const bytesModified = applyCorruptionToChunk(chunkData, start, chunkBudget, level, context);
+            totalBytesModified += bytesModified;
+
+            // 如果是最后一个块且需要嵌入签名，在这个块中嵌入
+            if (isLastChunk && context.options.embedSignature && chunkData.length > 1024) {
+                try {
+                    const signatureResult = embedCorruptionSignature(chunkData, context);
+                    totalBytesModified += signatureResult.bytesModified;
+                } catch (sigError) {
+                    // 签名嵌入失败不致命，继续处理
+                    console.warn('签名嵌入失败:', sigError);
+                }
+            }
+
+            // 将处理后的块添加到BlobParts（浏览器管理内存）
+            blobParts.push(chunkData);
+
+            // 允许浏览器在处理块之间进行垃圾回收
+            if (i % 4 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+        }
+
+        // 创建最终Blob（浏览器内部优化，不会复制所有数据到内存）
         if (typeof statusText !== 'undefined') {
-            statusText.textContent = `处理中... ${progress}% (${i + 1}/${totalChunks} 块)`;
+            statusText.textContent = '合并数据...';
         }
 
-        // 读取块
-        const chunkData = await readFileChunk(file, start, end);
+        const resultBlob = new Blob(blobParts, { type: 'application/octet-stream' });
 
-        // 对块应用破坏（使用每块预算）
-        const bytesModified = applyCorruptionToChunk(chunkData, start, chunkBudget, context);
-        totalBytesModified += bytesModified;
+        return { data: resultBlob, bytesModified: totalBytesModified };
 
-        // 如果是最后一个块且需要嵌入签名，在这个块中嵌入
-        if (isLastChunk && context.options.embedSignature && chunkData.length > 1024) {
-            const signatureResult = embedCorruptionSignature(chunkData, context);
-            totalBytesModified += signatureResult.bytesModified;
-        }
+    } catch (error) {
+        // 清理已分配的资源
+        blobParts.length = 0;
 
-        // 将处理后的块添加到BlobParts（浏览器管理内存）
-        blobParts.push(chunkData);
-
-        // 清空引用，允许垃圾回收
-        // 注意：chunkData 仍被 blobParts 引用，但浏览器会优化 Blob 存储
-
-        // 允许浏览器在处理块之间进行垃圾回收
-        if (i % 4 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 0));
-        }
+        // 重新抛出错误，由上层处理
+        throw new Error(`分块处理失败: ${error.message}`);
     }
-
-    // 创建最终Blob（浏览器内部优化，不会复制所有数据到内存）
-    if (typeof statusText !== 'undefined') {
-        statusText.textContent = '合并数据...';
-    }
-
-    const resultBlob = new Blob(blobParts, { type: 'application/octet-stream' });
-
-    return { data: resultBlob, bytesModified: totalBytesModified };
 }
 
 /**
@@ -957,25 +953,32 @@ async function corruptFile(file, level, options) {
     if (usesChunkedProcessing) {
         // 大文件：使用分块处理（返回Blob）
         statusText.textContent = '处理大文件（分块模式）...';
-        const result = await processLargeFileInChunks(file, level, corruptionContext);
-        dataResult = result.data; // Blob
 
-        const stepsArray = [
-            `使用分块处理模式处理大文件 (${formatFileSize(fileSize)})`,
-            `共修改 ${result.bytesModified} 字节`,
-            `破坏级别: ${level === 'light' ? '轻度' : level === 'medium' ? '中度' : '重度'}`
-        ];
+        try {
+            const result = await processLargeFileInChunks(file, level, corruptionContext);
+            dataResult = result.data; // Blob
 
-        // 如果嵌入了签名，添加到步骤中
-        if (options.embedSignature) {
-            stepsArray.push('在最后一个数据块中嵌入破坏签名');
+            const stepsArray = [
+                `使用分块处理模式处理大文件 (${formatFileSize(fileSize)})`,
+                `使用格式感知的智能破坏策略（${strategy}）`,
+                `共修改 ${result.bytesModified} 字节`,
+                `破坏级别: ${level === 'light' ? '轻度' : level === 'medium' ? '中度' : '重度'}`
+            ];
+
+            // 如果嵌入了签名，添加到步骤中
+            if (options.embedSignature) {
+                stepsArray.push('在最后一个数据块中嵌入破坏签名');
+            }
+
+            corruptionResult = {
+                level,
+                bytesModified: result.bytesModified,
+                steps: stepsArray
+            };
+        } catch (chunkError) {
+            // 分块处理失败，显示友好错误
+            throw new Error(`大文件处理失败: ${chunkError.message}。请尝试较小的文件或刷新页面重试。`);
         }
-
-        corruptionResult = {
-            level,
-            bytesModified: result.bytesModified,
-            steps: stepsArray
-        };
     } else {
         // 小文件：使用传统的精细处理策略（返回Uint8Array）
         statusText.textContent = '读取文件...';
