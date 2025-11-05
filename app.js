@@ -768,21 +768,27 @@ function calculateCorruptionPositions(fileSize, level, context) {
     const positions = new Set();
     const { random, strategy } = context;
 
-    // 根据破坏级别确定要修改的位置
+    // 根据破坏级别确定要修改的位置数量（与文件大小成比例）
     let targetCount;
     switch (level) {
         case 'light':
-            targetCount = Math.min(100, Math.floor(fileSize * 0.001));
+            // 轻度：约 0.1% 的字节
+            targetCount = Math.floor(fileSize * 0.001);
             break;
         case 'medium':
-            targetCount = Math.min(1000, Math.floor(fileSize * 0.01));
+            // 中度：约 1% 的字节
+            targetCount = Math.floor(fileSize * 0.01);
             break;
         case 'heavy':
-            targetCount = Math.min(10000, Math.floor(fileSize * 0.05));
+            // 重度：约 40% 的字节（30%-55% 范围内）
+            targetCount = Math.floor(fileSize * 0.40);
             break;
         default:
-            targetCount = 100;
+            targetCount = Math.floor(fileSize * 0.001);
     }
+
+    // 限制到文件大小，确保不超过
+    targetCount = Math.min(targetCount, fileSize);
 
     // 始终破坏文件头部（前512字节）
     for (let i = 0; i < Math.min(512, fileSize); i++) {
