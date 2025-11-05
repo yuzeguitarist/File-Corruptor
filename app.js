@@ -463,9 +463,20 @@ function handleFileSelect(files) {
         fileInfo.appendChild(listRow);
     }
 
-    fileInfo.style.display = 'block';
-    optionsSection.style.display = 'block';
+    // 隐藏上传区域
     uploadArea.style.display = 'none';
+
+    // 获取第一个文件的扩展名用于动画显示
+    const firstFile = validFiles[0];
+    const extension = extractExtension(firstFile.name);
+    const displayFormat = extension ? extension.toUpperCase() : 'FILE';
+
+    // 播放打印机吐纸+碎裂动画
+    playPrinterAnimation(displayFormat, () => {
+        // 动画完成后显示文件信息和选项
+        fileInfo.style.display = 'block';
+        optionsSection.style.display = 'block';
+    });
 }
 
 /**
@@ -1450,6 +1461,115 @@ function translateLevel(level) {
     return mapping[level] || level;
 }
 
+// ==================== 打印机动画 ====================
+
+/**
+ * 播放打印机吐纸+碎裂动画
+ * @param {string} fileFormat - 文件格式（如 "PDF", "HTML", "SIB" 等）
+ * @param {Function} callback - 动画完成后的回调函数
+ */
+function playPrinterAnimation(fileFormat, callback) {
+    const printerAnimation = document.getElementById('printerAnimation');
+    const animatedPaper = document.getElementById('animatedPaper');
+    const formatLabel = document.getElementById('formatLabel');
+    const paperShards = document.getElementById('paperShards');
+
+    if (!printerAnimation || !animatedPaper || !formatLabel || !paperShards) {
+        console.warn('打印机动画元素未找到，跳过动画');
+        if (callback) callback();
+        return;
+    }
+
+    // 设置文件格式标签
+    formatLabel.textContent = fileFormat.toUpperCase();
+
+    // 显示打印机动画区域
+    printerAnimation.style.display = 'block';
+
+    // 重置动画状态
+    animatedPaper.classList.remove('ejecting');
+    paperShards.innerHTML = '';
+
+    // 延迟一点开始动画，确保DOM已更新
+    setTimeout(() => {
+        // 开始纸张吐出动画
+        animatedPaper.classList.add('ejecting');
+
+        // 1.2秒后（纸张吐出完成），开始碎裂动画
+        setTimeout(() => {
+            // 创建8个碎片
+            const shardPositions = [
+                { x: -20, y: -20, rotation: -15 },
+                { x: 20, y: -25, rotation: 20 },
+                { x: -25, y: 10, rotation: -25 },
+                { x: 25, y: 5, rotation: 30 },
+                { x: -10, y: 25, rotation: -10 },
+                { x: 15, y: 30, rotation: 15 },
+                { x: 0, y: -15, rotation: 5 },
+                { x: 5, y: 15, rotation: -20 }
+            ];
+
+            shardPositions.forEach((pos, index) => {
+                const shard = document.createElement('div');
+                shard.className = `shard shatter-${index + 1}`;
+
+                // 创建随机大小的碎片SVG
+                const width = 20 + Math.random() * 25;
+                const height = 20 + Math.random() * 25;
+
+                shard.innerHTML = `
+                    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <polygon points="${generateRandomPolygon(width, height)}"
+                                 stroke="black"
+                                 stroke-width="2"
+                                 fill="white"/>
+                    </svg>
+                `;
+
+                // 设置初始位置（纸张中心）
+                shard.style.transform = `translate(${pos.x}px, ${pos.y}px) rotate(${pos.rotation}deg)`;
+
+                paperShards.appendChild(shard);
+
+                // 延迟添加动画类，创建交错效果
+                setTimeout(() => {
+                    shard.style.opacity = '1';
+                }, index * 20);
+            });
+
+            // 隐藏完整的纸张
+            animatedPaper.style.opacity = '0';
+
+            // 碎片动画持续0.8秒，再等0.3秒后调用回调
+            setTimeout(() => {
+                printerAnimation.style.display = 'none';
+                if (callback) callback();
+            }, 1100);
+        }, 1200);
+    }, 100);
+}
+
+/**
+ * 生成随机多边形的点坐标
+ * @param {number} width - 宽度
+ * @param {number} height - 高度
+ * @returns {string} SVG多边形点坐标字符串
+ */
+function generateRandomPolygon(width, height) {
+    const points = [];
+    const numPoints = 4 + Math.floor(Math.random() * 3); // 4-6个点
+
+    for (let i = 0; i < numPoints; i++) {
+        const angle = (i / numPoints) * Math.PI * 2;
+        const randomRadius = 0.8 + Math.random() * 0.4; // 0.8-1.2的随机半径
+        const x = (width / 2) + (width / 2) * Math.cos(angle) * randomRadius;
+        const y = (height / 2) + (height / 2) * Math.sin(angle) * randomRadius;
+        points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+
+    return points.join(' ');
+}
+
 // ==================== 应用重置 ====================
 
 /**
@@ -1464,6 +1584,11 @@ function resetApp() {
     optionsSection.style.display = 'none';
     statusSection.style.display = 'none';
     successSection.style.display = 'none';
+
+    const printerAnimation = document.getElementById('printerAnimation');
+    if (printerAnimation) {
+        printerAnimation.style.display = 'none';
+    }
 
     if (reportCard) {
         reportCard.style.display = 'none';
