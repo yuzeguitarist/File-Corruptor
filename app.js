@@ -815,25 +815,23 @@ function calculateCorruptionPositions(fileSize, level, context) {
 }
 
 /**
- * 对单个数据块应用破坏
+ * 对单个数据块应用破坏（优化版，使用每块预算）
  * @param {Uint8Array} chunkData - 数据块
  * @param {number} chunkStart - 块在文件中的起始位置
- * @param {Set<number>} positions - 要修改的全局位置集合
+ * @param {number} chunkBudget - 这个块应该破坏的字节数
  * @param {Object} context - 破坏上下文
  * @returns {number} 修改的字节数
  */
-function applyCorruptionToChunk(chunkData, chunkStart, positions, context) {
+function applyCorruptionToChunk(chunkData, chunkStart, chunkBudget, context) {
     const { random } = context;
-    const chunkEnd = chunkStart + chunkData.length;
+    const chunkSize = chunkData.length;
     let bytesModified = 0;
 
-    // 遍历这个块中需要修改的位置
-    for (const pos of positions) {
-        if (pos >= chunkStart && pos < chunkEnd) {
-            const localPos = pos - chunkStart;
-            chunkData[localPos] = Math.floor(random() * 256);
-            bytesModified++;
-        }
+    // 在这个块内随机生成要破坏的位置
+    for (let i = 0; i < chunkBudget; i++) {
+        const localPos = Math.floor(random() * chunkSize);
+        chunkData[localPos] = Math.floor(random() * 256);
+        bytesModified++;
     }
 
     return bytesModified;
@@ -851,8 +849,22 @@ async function processLargeFileInChunks(file, level, context) {
     const chunkSize = CHUNK_PROCESSING_CONFIG.chunkSize;
     const totalChunks = Math.ceil(fileSize / chunkSize);
 
-    // 预先计算所有要破坏的位置
-    const corruptionPositions = calculateCorruptionPositions(fileSize, level, context);
+    // 计算总的目标破坏字节数
+    let totalTargetCount;
+    switch (level) {
+        case 'light':
+            totalTargetCount = Math.floor(fileSize * 0.001); // 0.1%
+            break;
+        case 'medium':
+            totalTargetCount = Math.floor(fileSize * 0.01); // 1%
+            break;
+        case 'heavy':
+            totalTargetCount = Math.floor(fileSize * 0.40); // 40%
+            break;
+        default:
+            totalTargetCount = Math.floor(fileSize * 0.001);
+    }
+    totalTargetCount = Math.min(totalTargetCount, fileSize);
 
     // 存储所有处理后的块
     const chunks = [];
@@ -862,6 +874,10 @@ async function processLargeFileInChunks(file, level, context) {
     for (let i = 0; i < totalChunks; i++) {
         const start = i * chunkSize;
         const end = Math.min(start + chunkSize, fileSize);
+        const currentChunkSize = end - start;
+
+        // 计算这个块的预算：按比例分配
+        const chunkBudget = Math.floor(currentChunkSize / fileSize * totalTargetCount);
 
         // 更新进度显示
         const progress = Math.floor((i / totalChunks) * 100);
@@ -872,8 +888,8 @@ async function processLargeFileInChunks(file, level, context) {
         // 读取块
         const chunkData = await readFileChunk(file, start, end);
 
-        // 对块应用破坏
-        const bytesModified = applyCorruptionToChunk(chunkData, start, corruptionPositions, context);
+        // 对块应用破坏（使用每块预算）
+        const bytesModified = applyCorruptionToChunk(chunkData, start, chunkBudget, context);
         totalBytesModified += bytesModified;
 
         // 保存处理后的块
