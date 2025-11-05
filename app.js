@@ -466,20 +466,10 @@ function handleFileSelect(files) {
         fileInfo.appendChild(listRow);
     }
 
-    // 隐藏上传区域
+    // 显示文件信息和选项，隐藏上传区域
+    fileInfo.style.display = 'block';
+    optionsSection.style.display = 'block';
     uploadArea.style.display = 'none';
-
-    // 获取第一个文件的扩展名用于动画显示
-    const firstFile = validFiles[0];
-    const extension = extractExtension(firstFile.name);
-    const displayFormat = extension ? extension.toUpperCase() : 'FILE';
-
-    // 播放打印机吐纸+碎裂动画
-    playPrinterAnimation(displayFormat, () => {
-        // 动画完成后显示文件信息和选项
-        fileInfo.style.display = 'block';
-        optionsSection.style.display = 'block';
-    });
 }
 
 /**
@@ -617,26 +607,37 @@ if (typeof document !== 'undefined') {
 
         optionsSection.style.display = 'none';
         fileInfo.style.display = 'none';
-        statusSection.style.display = 'block';
 
         if (selectedFiles.length === 1) {
-            statusText.textContent = '正在破坏文件...';
-            await new Promise(resolve => setTimeout(resolve, Math.min(delay, 800)));
-            await corruptFile(selectedFiles[0], level, options);
+            // 单文件模式：使用碎纸机动画
+            const file = selectedFiles[0];
+            const extension = extractExtension(file.name);
+            const displayFormat = extension ? extension.toUpperCase() : 'FILE';
+
+            // 估算处理时间（至少1秒）
+            const estimatedTime = Math.max(1000, Math.min(delay, 800));
+
+            // 启动碎纸机动画和文件破坏同时进行
+            const animationPromise = playShredderAnimation(displayFormat, level, estimatedTime);
+            const corruptPromise = corruptFile(file, level, options);
+
+            // 等待两者都完成
+            await Promise.all([animationPromise, corruptPromise]);
         } else {
-            // 批量处理多个文件
+            // 批量处理多个文件：使用传统的转圈效果
+            statusSection.style.display = 'block';
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
                 statusText.textContent = `正在破坏文件 ${i + 1}/${selectedFiles.length}: ${file.name}`;
 
                 // 根据速度档位调整延迟
-                const batchDelay = Math.min(delay, 500); // 批量处理时的最大延迟
+                const batchDelay = Math.min(delay, 500);
                 await new Promise(resolve => setTimeout(resolve, batchDelay));
                 await corruptFile(file, level, options);
             }
+            statusSection.style.display = 'none';
         }
 
-        statusSection.style.display = 'none';
         successSection.style.display = 'block';
     } catch (error) {
         console.error('文件破坏失败:', error);
@@ -652,7 +653,15 @@ if (typeof document !== 'undefined') {
         }
 
         showAlert(errorMessage);
+
+        // 隐藏所有处理中的显示
         statusSection.style.display = 'none';
+        const printerAnimation = document.getElementById('printerAnimation');
+        if (printerAnimation) {
+            printerAnimation.style.display = 'none';
+        }
+
+        // 恢复选项和文件信息
         optionsSection.style.display = 'block';
         fileInfo.style.display = 'block';
     }
@@ -1464,125 +1473,119 @@ function translateLevel(level) {
     return mapping[level] || level;
 }
 
-// ==================== 打印机动画 ====================
+// ==================== 碎纸机动画 ====================
 
 /**
- * 播放打印机吐纸+碎裂动画
+ * 播放碎纸机动画
  * @param {string} fileFormat - 文件格式（如 "PDF", "HTML", "SIB" 等）
- * @param {Function} callback - 动画完成后的回调函数
+ * @param {string} level - 破坏程度 (light/medium/heavy)
+ * @param {number} duration - 动画持续时间（毫秒），至少1000ms
+ * @returns {Promise} 动画完成时resolve
  */
-function playPrinterAnimation(fileFormat, callback) {
-    const printerAnimation = document.getElementById('printerAnimation');
-    const animatedPaper = document.getElementById('animatedPaper');
-    const formatLabel = document.getElementById('formatLabel');
-    const paperShards = document.getElementById('paperShards');
+function playShredderAnimation(fileFormat, level, duration) {
+    return new Promise((resolve) => {
+        const printerAnimation = document.getElementById('printerAnimation');
+        const animatedPaper = document.getElementById('animatedPaper');
+        const formatLabel = document.getElementById('formatLabel');
+        const paperShards = document.getElementById('paperShards');
 
-    if (!printerAnimation || !animatedPaper || !formatLabel || !paperShards) {
-        console.warn('打印机动画元素未找到，跳过动画');
-        if (callback) callback();
-        return;
-    }
+        if (!printerAnimation || !animatedPaper || !formatLabel || !paperShards) {
+            console.warn('碎纸机动画元素未找到，跳过动画');
+            resolve();
+            return;
+        }
 
-    // 设置文件格式标签
-    formatLabel.textContent = fileFormat.toUpperCase();
+        // 清除可能存在的旧动画timeout
+        animationTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+        animationTimeouts = [];
 
-    // 显示打印机动画区域
-    printerAnimation.style.display = 'block';
+        // 设置文件格式标签
+        formatLabel.textContent = fileFormat.toUpperCase();
 
-    // 重置动画状态
-    animatedPaper.classList.remove('ejecting');
-    paperShards.innerHTML = '';
-    animatedPaper.style.opacity = '1'; // 重置透明度
+        // 显示碎纸机动画区域
+        printerAnimation.style.display = 'block';
 
-    // 延迟一点开始动画，确保DOM已更新
-    const timeout1 = setTimeout(() => {
+        // 重置动画状态
+        animatedPaper.classList.remove('ejecting', 'shredding');
+        paperShards.innerHTML = '';
+        animatedPaper.style.opacity = '1';
+
+        // 根据破坏程度确定切割线数量
+        const shredLineCount = level === 'light' ? 1 : level === 'medium' ? 2 : 3;
+
+        // 添加切割线到纸张SVG
+        addShredLines(animatedPaper, shredLineCount);
+
+        // 计算动画时间分配（总时长 = 吐纸时间 + 展示时间）
+        const minDuration = Math.max(duration, 1000);
+        const ejectDuration = Math.min(800, minDuration * 0.6); // 吐纸占60%，最多800ms
+        const displayDuration = minDuration - ejectDuration; // 剩余时间展示切割效果
+
         // 开始纸张吐出动画
-        animatedPaper.classList.add('ejecting');
+        const timeout1 = setTimeout(() => {
+            animatedPaper.classList.add('ejecting');
 
-        // 1.2秒后（纸张吐出完成），开始碎裂动画
-        const timeout2 = setTimeout(() => {
-            // 创建8个碎片
-            const shardPositions = [
-                { x: -20, y: -20, rotation: -15 },
-                { x: 20, y: -25, rotation: 20 },
-                { x: -25, y: 10, rotation: -25 },
-                { x: 25, y: 5, rotation: 30 },
-                { x: -10, y: 25, rotation: -10 },
-                { x: 15, y: 30, rotation: 15 },
-                { x: 0, y: -15, rotation: 5 },
-                { x: 5, y: 15, rotation: -20 }
-            ];
+            // 吐出完成后，展示切割效果一段时间
+            const timeout2 = setTimeout(() => {
+                // 动画完成，隐藏并resolve
+                printerAnimation.style.display = 'none';
 
-            shardPositions.forEach((pos, index) => {
-                const shard = document.createElement('div');
-                shard.className = `shard shatter-${index + 1}`;
-
-                // 创建随机大小的碎片SVG
-                const width = 20 + Math.random() * 25;
-                const height = 20 + Math.random() * 25;
-
-                shard.innerHTML = `
-                    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <polygon points="${generateRandomPolygon(width, height)}"
-                                 stroke="black"
-                                 stroke-width="2"
-                                 fill="white"/>
-                    </svg>
-                `;
-
-                // 设置初始位置（纸张中心）
-                shard.style.transform = `translate(${pos.x}px, ${pos.y}px) rotate(${pos.rotation}deg)`;
-
-                paperShards.appendChild(shard);
-
-                // 延迟添加动画类，创建交错效果
-                const timeout = setTimeout(() => {
-                    shard.style.opacity = '1';
-                }, index * 20);
-                animationTimeouts.push(timeout);
-            });
-
-            // 隐藏完整的纸张
-            animatedPaper.style.opacity = '0';
-
-            // 碎片动画持续0.8秒，再等0.3秒后调用回调
-            const timeout3 = setTimeout(() => {
-                // 在执行回调前，检查是否仍有有效的选中文件
-                // 如果用户在动画播放期间点击了重置，selectedFiles 会被清空
+                // 检查是否用户已重置
                 if (selectedFiles && selectedFiles.length > 0) {
-                    printerAnimation.style.display = 'none';
-                    if (callback) callback();
+                    resolve();
                 } else {
-                    // 用户已重置，只隐藏动画，不执行回调
-                    printerAnimation.style.display = 'none';
+                    // 用户已重置，不resolve（防止显示成功页面）
+                    console.log('用户已重置，取消动画回调');
                 }
-            }, 1100);
-            animationTimeouts.push(timeout3);
-        }, 1200);
-        animationTimeouts.push(timeout2);
-    }, 100);
-    animationTimeouts.push(timeout1);
+            }, ejectDuration + displayDuration);
+            animationTimeouts.push(timeout2);
+        }, 100);
+        animationTimeouts.push(timeout1);
+    });
 }
 
 /**
- * 生成随机多边形的点坐标
- * @param {number} width - 宽度
- * @param {number} height - 高度
- * @returns {string} SVG多边形点坐标字符串
+ * 在纸张SVG中添加切割线
+ * @param {HTMLElement} paperElement - 纸张DOM元素
+ * @param {number} lineCount - 切割线数量 (1-3)
  */
-function generateRandomPolygon(width, height) {
-    const points = [];
-    const numPoints = 4 + Math.floor(Math.random() * 3); // 4-6个点
+function addShredLines(paperElement, lineCount) {
+    const paperSvg = paperElement.querySelector('svg');
+    if (!paperSvg) return;
 
-    for (let i = 0; i < numPoints; i++) {
-        const angle = (i / numPoints) * Math.PI * 2;
-        const randomRadius = 0.8 + Math.random() * 0.4; // 0.8-1.2的随机半径
-        const x = (width / 2) + (width / 2) * Math.cos(angle) * randomRadius;
-        const y = (height / 2) + (height / 2) * Math.sin(angle) * randomRadius;
-        points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    // 移除旧的切割线
+    const oldLines = paperSvg.querySelectorAll('.shred-line');
+    oldLines.forEach(line => line.remove());
+
+    // 纸张尺寸
+    const paperWidth = 80;
+    const paperHeight = 100;
+
+    // 根据线条数量计算位置（均匀分布）
+    const positions = [];
+    if (lineCount === 1) {
+        positions.push(paperWidth / 2); // 中间一条
+    } else if (lineCount === 2) {
+        positions.push(paperWidth / 3, paperWidth * 2 / 3); // 两条
+    } else if (lineCount === 3) {
+        positions.push(paperWidth / 4, paperWidth / 2, paperWidth * 3 / 4); // 三条
     }
 
-    return points.join(' ');
+    // 添加竖线
+    positions.forEach(x => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('class', 'shred-line');
+        line.setAttribute('x1', x.toString());
+        line.setAttribute('y1', '10');
+        line.setAttribute('x2', x.toString());
+        line.setAttribute('y2', (paperHeight - 10).toString());
+        line.setAttribute('stroke', 'black');
+        line.setAttribute('stroke-width', '2');
+        line.setAttribute('stroke-dasharray', '5,3'); // 虚线效果
+        line.setAttribute('opacity', '0.7');
+
+        paperSvg.appendChild(line);
+    });
 }
 
 // ==================== 应用重置 ====================
