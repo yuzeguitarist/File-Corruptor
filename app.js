@@ -687,23 +687,13 @@ if (typeof document !== 'undefined') {
 
             // 启动碎纸机动画和文件破坏同时进行
             const animationPromise = playShredderAnimation(displayFormat, level, estimatedTime);
-            const corruptPromise = corruptFile(file, level, options);
+            const corruptPromise = corruptFile(file, level, options, { isBatchMode: false });
 
             // 等待两者都完成
             await Promise.all([animationPromise, corruptPromise]);
         } else {
-            // 批量处理多个文件：使用传统的转圈效果
-            statusSection.style.display = 'block';
-            for (let i = 0; i < selectedFiles.length; i++) {
-                const file = selectedFiles[i];
-                statusText.textContent = `正在破坏文件 ${i + 1}/${selectedFiles.length}: ${file.name}`;
-
-                // 根据速度档位调整延迟
-                const batchDelay = Math.min(delay, 500);
-                await new Promise(resolve => setTimeout(resolve, batchDelay));
-                await corruptFile(file, level, options);
-            }
-            statusSection.style.display = 'none';
+            // 批量处理多个文件：使用专用批量处理函数
+            await processBatchFiles(selectedFiles, level, options, delay);
         }
 
         successSection.style.display = 'block';
@@ -744,6 +734,81 @@ if (typeof document !== 'undefined') {
 } // 结束浏览器环境检查
 
 // ==================== 文件破坏核心逻辑 ====================
+
+/**
+ * 批量处理多个文件（带错误处理和进度显示）
+ * @param {File[]} files - 要处理的文件数组
+ * @param {string} level - 破坏级别
+ * @param {Object} options - 高级选项
+ * @param {number} delay - 处理延迟
+ */
+async function processBatchFiles(files, level, options, delay) {
+    statusSection.style.display = 'block';
+
+    const results = {
+        success: [],
+        failed: [],
+        reports: []
+    };
+
+    try {
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const fileName = file.name;
+
+            // 更新批量处理进度（不会被单文件处理覆盖）
+            statusText.textContent = `正在破坏文件 ${i + 1}/${files.length}: ${fileName}`;
+
+            try {
+                // 等待延迟（让用户看到进度）
+                const batchDelay = Math.min(delay, 500);
+                if (i > 0) {
+                    await new Promise(resolve => setTimeout(resolve, batchDelay));
+                }
+
+                // 处理单个文件（传递批量模式标志，禁止更新statusText和显示报告）
+                const report = await corruptFile(file, level, options, {
+                    isBatchMode: true,
+                    fileIndex: i + 1,
+                    totalFiles: files.length
+                });
+
+                results.success.push(fileName);
+                results.reports.push(report);
+
+            } catch (fileError) {
+                // 单个文件失败不中断整个批处理
+                console.error(`文件 "${fileName}" 处理失败:`, fileError);
+                results.failed.push({
+                    fileName,
+                    error: fileError.message || '未知错误'
+                });
+            }
+        }
+
+        // 批量处理完成，隐藏进度
+        statusSection.style.display = 'none';
+
+        // 显示批量处理汇总报告
+        renderBatchReport(results);
+
+        // 如果有失败的文件，显示警告
+        if (results.failed.length > 0) {
+            const failedNames = results.failed.map(f => `• ${f.fileName}: ${f.error}`).join('\n');
+            showAlert(
+                `批量处理完成！\n\n` +
+                `成功: ${results.success.length} 个文件\n` +
+                `失败: ${results.failed.length} 个文件\n\n` +
+                `失败文件详情:\n${failedNames}`
+            );
+        }
+
+    } catch (batchError) {
+        // 整个批处理失败（不应该发生，因为单个文件错误已被捕获）
+        statusSection.style.display = 'none';
+        throw new Error(`批量处理失败: ${batchError.message}`);
+    }
+}
 
 /**
  * 分块读取文件
@@ -846,7 +911,7 @@ function applyCorruptionToChunk(chunkData, chunkStart, chunkBudget, level, conte
  * @param {Object} context - 破坏上下文
  * @returns {Promise<{data: Blob, bytesModified: number}>}
  */
-async function processLargeFileInChunks(file, level, context) {
+async function processLargeFileInChunks(file, level, context, isBatchMode = false) {
     const fileSize = file.size;
     const chunkSize = CHUNK_PROCESSING_CONFIG.chunkSize;
     const totalChunks = Math.ceil(fileSize / chunkSize);
@@ -883,9 +948,9 @@ async function processLargeFileInChunks(file, level, context) {
             // 计算这个块的预算：按比例分配
             const chunkBudget = Math.floor(currentChunkSize / fileSize * totalTargetCount);
 
-            // 更新进度显示
-            const progress = Math.floor((i / totalChunks) * 100);
-            if (typeof statusText !== 'undefined') {
+            // 更新进度显示（批量模式下不更新，由批量处理函数管理）
+            if (!isBatchMode && typeof statusText !== 'undefined') {
+                const progress = Math.floor((i / totalChunks) * 100);
                 statusText.textContent = `处理中... ${progress}% (${i + 1}/${totalChunks} 块)`;
             }
 
@@ -922,7 +987,7 @@ async function processLargeFileInChunks(file, level, context) {
         }
 
         // 创建最终Blob（浏览器内部优化，不会复制所有数据到内存）
-        if (typeof statusText !== 'undefined') {
+        if (!isBatchMode && typeof statusText !== 'undefined') {
             statusText.textContent = '合并数据...';
         }
 
@@ -943,9 +1008,13 @@ async function processLargeFileInChunks(file, level, context) {
  * 破坏文件的核心函数（重构版，支持大文件分块处理）
  * @param {File} file - 要破坏的文件
  * @param {string} level - 破坏程度 (light/medium/heavy)
+ * @param {Object} options - 高级选项
+ * @param {Object} context - 处理上下文（批量模式等）
+ * @returns {Object} 破坏报告
  */
-async function corruptFile(file, level, options) {
+async function corruptFile(file, level, options, context = {}) {
     const startTime = getTimestamp();
+    const isBatchMode = context.isBatchMode || false;
 
     // 获取文件扩展名及类别
     const extension = extractExtension(file.name);
@@ -974,10 +1043,13 @@ async function corruptFile(file, level, options) {
 
     if (usesChunkedProcessing) {
         // 大文件：使用分块处理（返回Blob）
-        statusText.textContent = '处理大文件（分块模式）...';
+        // 批量模式下不更新statusText（由批量处理函数管理）
+        if (!isBatchMode && typeof statusText !== 'undefined') {
+            statusText.textContent = '处理大文件（分块模式）...';
+        }
 
         try {
-            const result = await processLargeFileInChunks(file, level, corruptionContext);
+            const result = await processLargeFileInChunks(file, level, corruptionContext, isBatchMode);
             dataResult = result.data; // Blob
 
             const stepsArray = [
@@ -1003,14 +1075,18 @@ async function corruptFile(file, level, options) {
         }
     } else {
         // 小文件：使用传统的精细处理策略（返回Uint8Array）
-        statusText.textContent = '读取文件...';
+        if (!isBatchMode && typeof statusText !== 'undefined') {
+            statusText.textContent = '读取文件...';
+        }
         const arrayBuffer = await file.arrayBuffer();
         dataResult = new Uint8Array(arrayBuffer);
 
         // 更新context中的fileSize为实际的数组长度
         corruptionContext.fileSize = dataResult.length;
 
-        statusText.textContent = '应用破坏策略...';
+        if (!isBatchMode && typeof statusText !== 'undefined') {
+            statusText.textContent = '应用破坏策略...';
+        }
         switch (level) {
             case 'light':
                 corruptionResult = corruptLight(dataResult, corruptionContext);
@@ -1026,15 +1102,20 @@ async function corruptFile(file, level, options) {
 
         // 嵌入签名（仅对小文件，大文件已在分块处理中嵌入）
         if (options.embedSignature && dataResult.length > 1024) {
-            statusText.textContent = '嵌入破坏签名...';
+            if (!isBatchMode && typeof statusText !== 'undefined') {
+                statusText.textContent = '嵌入破坏签名...';
+            }
             const signatureResult = embedCorruptionSignature(dataResult, corruptionContext);
             corruptionResult.bytesModified += signatureResult.bytesModified;
             corruptionResult.steps.push(signatureResult.description);
         }
     }
 
-    statusText.textContent = '破坏完成，正在准备下载...';
-    const downloadName = downloadCorruptedFile(dataResult, file.name, options);
+    if (!isBatchMode && typeof statusText !== 'undefined') {
+        statusText.textContent = '破坏完成，正在准备下载...';
+    }
+
+    const downloadName = downloadCorruptedFile(dataResult, file.name, options, isBatchMode);
     const report = buildCorruptionReport({
         file,
         level,
@@ -1049,10 +1130,15 @@ async function corruptFile(file, level, options) {
         usedChunkedProcessing: usesChunkedProcessing
     });
 
-    renderReport(report);
-    if (options.downloadReport) {
-        downloadReportJSON(report);
+    // 单文件模式才立即显示报告，批量模式由批量处理函数统一显示
+    if (!isBatchMode) {
+        renderReport(report);
+        if (options.downloadReport) {
+            downloadReportJSON(report);
+        }
     }
+
+    return report;
 }
 
 /**
@@ -1258,10 +1344,13 @@ function corruptHeavy(data, context) {
 
 /**
  * 下载破坏后的文件
- * @param {Uint8Array} data - 破坏后的文件数据
+ * @param {Uint8Array|Blob} data - 破坏后的文件数据
  * @param {string} originalName - 原始文件名
+ * @param {Object} options - 下载选项
+ * @param {boolean} isBatchMode - 是否批量模式（批量模式下延迟触发下载）
+ * @returns {string} 下载文件名
  */
-function downloadCorruptedFile(data, originalName, options = {}) {
+function downloadCorruptedFile(data, originalName, options = {}, isBatchMode = false) {
     // 如果 data 已经是 Blob，直接使用；否则创建 Blob
     const blob = (data instanceof Blob)
         ? data
@@ -1286,13 +1375,23 @@ function downloadCorruptedFile(data, originalName, options = {}) {
 
     a.download = downloadName;
 
-    // 触发下载
-    document.body.appendChild(a);
-    a.click();
-
-    // 清理
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // 批量模式：延迟触发下载，避免浏览器阻止
+    if (isBatchMode) {
+        // 延迟300ms触发下载，减少同时下载的警告
+        setTimeout(() => {
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            // 延迟清理URL，确保下载开始
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }, 300);
+    } else {
+        // 单文件模式：立即下载
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
 
     return downloadName;
 }
@@ -1750,6 +1849,126 @@ function renderReport(report) {
             stepsList.appendChild(stepItem);
         });
         reportCard.appendChild(stepsList);
+    }
+}
+
+/**
+ * 渲染批量处理报告
+ * @param {Object} results - 批量处理结果 {success: [], failed: [], reports: []}
+ */
+function renderBatchReport(results) {
+    if (!reportCard) return;
+
+    reportCard.innerHTML = '';
+    reportCard.style.display = 'block';
+
+    const title = document.createElement('h4');
+    title.className = 'report-title';
+    title.textContent = '批量处理报告';
+    reportCard.appendChild(title);
+
+    // 汇总统计
+    const summaryList = document.createElement('ul');
+    summaryList.className = 'report-meta';
+
+    const totalFiles = results.success.length + results.failed.length;
+    const totalBytes = results.reports.reduce((sum, r) => sum + r.bytesModified, 0);
+    const totalDuration = results.reports.reduce((sum, r) => sum + r.duration, 0);
+
+    const summaryRows = [
+        ['处理文件', `${totalFiles} 个`],
+        ['成功', `${results.success.length} 个`],
+        ['失败', `${results.failed.length} 个`],
+        ['总修改字节', totalBytes.toLocaleString()],
+        ['总耗时', `${Math.round(totalDuration)} ms`]
+    ];
+
+    summaryRows.forEach(([label, value]) => {
+        const item = document.createElement('li');
+        item.innerHTML = `<span class="report-label">${label}</span><span class="report-value">${value}</span>`;
+        summaryList.appendChild(item);
+    });
+
+    reportCard.appendChild(summaryList);
+
+    // 成功文件列表
+    if (results.success.length > 0) {
+        const successTitle = document.createElement('div');
+        successTitle.className = 'report-steps-title';
+        successTitle.textContent = `✅ 成功文件 (${results.success.length})`;
+        successTitle.style.marginTop = '16px';
+        reportCard.appendChild(successTitle);
+
+        const successList = document.createElement('ol');
+        successList.className = 'report-steps';
+        results.success.forEach((fileName) => {
+            const item = document.createElement('li');
+            item.textContent = fileName;
+            successList.appendChild(item);
+        });
+        reportCard.appendChild(successList);
+    }
+
+    // 失败文件列表
+    if (results.failed.length > 0) {
+        const failedTitle = document.createElement('div');
+        failedTitle.className = 'report-steps-title';
+        failedTitle.textContent = `❌ 失败文件 (${results.failed.length})`;
+        failedTitle.style.marginTop = '16px';
+        failedTitle.style.color = 'var(--error-color, #d32f2f)';
+        reportCard.appendChild(failedTitle);
+
+        const failedList = document.createElement('ol');
+        failedList.className = 'report-steps';
+        results.failed.forEach(({fileName, error}) => {
+            const item = document.createElement('li');
+            item.textContent = `${fileName} - ${error}`;
+            item.style.color = 'var(--error-color, #d32f2f)';
+            failedList.appendChild(item);
+        });
+        reportCard.appendChild(failedList);
+    }
+
+    // 详细报告折叠区
+    if (results.reports.length > 0) {
+        const detailsTitle = document.createElement('div');
+        detailsTitle.className = 'report-steps-title';
+        detailsTitle.textContent = '📊 查看详细报告';
+        detailsTitle.style.marginTop = '16px';
+        detailsTitle.style.cursor = 'pointer';
+        detailsTitle.style.userSelect = 'none';
+
+        const detailsContent = document.createElement('div');
+        detailsContent.style.display = 'none';
+        detailsContent.style.marginTop = '8px';
+
+        // 切换显示
+        detailsTitle.addEventListener('click', () => {
+            const isHidden = detailsContent.style.display === 'none';
+            detailsContent.style.display = isHidden ? 'block' : 'none';
+            detailsTitle.textContent = isHidden ? '📊 隐藏详细报告' : '📊 查看详细报告';
+        });
+
+        // 为每个报告创建简化视图
+        results.reports.forEach((report, index) => {
+            const reportItem = document.createElement('div');
+            reportItem.style.padding = '12px';
+            reportItem.style.marginBottom = '8px';
+            reportItem.style.border = '1px solid var(--gray-300)';
+            reportItem.style.fontSize = '12px';
+
+            reportItem.innerHTML = `
+                <strong>${index + 1}. ${report.originalName}</strong><br>
+                破坏级别: ${report.levelLabel} |
+                修改: ${report.bytesModified.toLocaleString()} 字节 (${report.modifiedRatio}%) |
+                耗时: ${Math.round(report.duration)} ms
+            `;
+
+            detailsContent.appendChild(reportItem);
+        });
+
+        reportCard.appendChild(detailsTitle);
+        reportCard.appendChild(detailsContent);
     }
 }
 
