@@ -291,6 +291,10 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
 // 注意：即使使用Blob，所有块在合并前仍在内存中
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
+// 可逆模式的文件大小限制：500MB
+// 超过此大小的文件无法使用可逆模式（因为需要在内存中生成和处理diff）
+const MAX_REVERSIBLE_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
 // 分块处理配置
 const CHUNK_PROCESSING_CONFIG = {
     chunkSize: 256 * 1024 * 1024, // 每块256MB
@@ -538,6 +542,78 @@ function handleFileSelect(files) {
     fileInfo.style.display = 'block';
     optionsSection.style.display = 'block';
     uploadArea.style.display = 'none';
+
+    // 检查并更新可逆模式的可用性
+    updateReversibleModeAvailability();
+}
+
+/**
+ * 更新可逆模式复选框的可用性（基于文件大小）
+ */
+function updateReversibleModeAvailability() {
+    const reversibleModeCheckbox = document.getElementById('reversibleMode');
+    const passwordInputWrapper = document.getElementById('passwordInputWrapper');
+
+    if (!reversibleModeCheckbox) return;
+
+    // 检查所有选中的文件是否都在500MB以内
+    let allFilesSupported = true;
+    let maxFileSize = 0;
+    let maxFileName = '';
+
+    for (const file of selectedFiles) {
+        if (file.size > maxFileSize) {
+            maxFileSize = file.size;
+            maxFileName = file.name;
+        }
+        if (file.size > MAX_REVERSIBLE_FILE_SIZE) {
+            allFilesSupported = false;
+        }
+    }
+
+    if (!allFilesSupported) {
+        // 禁用可逆模式
+        reversibleModeCheckbox.disabled = true;
+        reversibleModeCheckbox.checked = false;
+        if (passwordInputWrapper) {
+            passwordInputWrapper.style.display = 'none';
+        }
+
+        // 更新复选框的父元素样式，添加提示
+        const optionLabel = reversibleModeCheckbox.closest('.advanced-option');
+        if (optionLabel) {
+            optionLabel.style.opacity = '0.5';
+            optionLabel.style.cursor = 'not-allowed';
+
+            // 添加禁用原因提示
+            let hintDiv = optionLabel.querySelector('.reversible-hint');
+            if (!hintDiv) {
+                hintDiv = document.createElement('div');
+                hintDiv.className = 'reversible-hint';
+                hintDiv.style.cssText = 'margin-top: 8px; padding: 8px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 12px; color: #856404;';
+                const descDiv = optionLabel.querySelector('div:last-child');
+                if (descDiv) {
+                    descDiv.appendChild(hintDiv);
+                }
+            }
+            hintDiv.textContent = `不可用：文件 "${maxFileName}" (${formatFileSize(maxFileSize)}) 超过500MB限制。可逆模式仅支持500MB以内的文件。`;
+        }
+    } else {
+        // 启用可逆模式
+        reversibleModeCheckbox.disabled = false;
+
+        const optionLabel = reversibleModeCheckbox.closest('.advanced-option');
+        if (optionLabel) {
+            optionLabel.style.opacity = '1';
+            optionLabel.style.cursor = 'pointer';
+
+            // 移除禁用提示
+            const hintDiv = optionLabel.querySelector('.reversible-hint');
+            if (hintDiv) {
+                hintDiv.remove();
+            }
+        }
+    }
 }
 
 /**
@@ -839,7 +915,7 @@ if (typeof document !== 'undefined') {
                 restoreFileData = reversibleData;
                 document.getElementById('restoreFileName').textContent = file.name;
                 document.getElementById('restoreFileSize').textContent = formatFileSize(file.size);
-                document.getElementById('restoreVerifyStatus').innerHTML = '<span style="color: green;">✓ 可恢复文件</span>';
+                document.getElementById('restoreVerifyStatus').innerHTML = '<span style="color: green;">[可恢复] 文件验证通过</span>';
 
                 restoreUploadArea.style.display = 'none';
                 restoreFileInfo.style.display = 'block';
@@ -1299,9 +1375,9 @@ async function corruptFile(file, level, options) {
             dataResult = embedReversibleData(corruptedData, reversibleInfo);
 
             // 更新报告
-            corruptionResult.steps.push(`✓ 可逆模式：已加密保存 ${diff.totalChanges} 处修改记录`);
-            corruptionResult.steps.push(`✓ 加密算法：AES-256-GCM with PBKDF2 (100000次迭代)`);
-            corruptionResult.steps.push(`✓ 压缩后大小：${formatFileSize(encryptedResult.encrypted.length)}`);
+            corruptionResult.steps.push(`[可逆模式] 已加密保存 ${diff.totalChanges} 处修改记录`);
+            corruptionResult.steps.push(`[加密算法] AES-256-GCM with PBKDF2 (100000次迭代)`);
+            corruptionResult.steps.push(`[压缩后大小] ${formatFileSize(encryptedResult.encrypted.length)}`);
         } catch (reversibleError) {
             console.error('可逆处理失败:', reversibleError);
             throw new Error(`可逆数据处理失败: ${reversibleError.message}`);
@@ -1622,6 +1698,7 @@ function detectDevicePerformance() {
     const cores = navigator.hardwareConcurrency || 2;
     deviceInfo.push(`CPU核心数: ${cores}`);
     if (cores >= 8) score += 3;
+    else if (cores >= 6) score += 2.5;
     else if (cores >= 4) score += 2;
     else score += 1;
 
@@ -1633,44 +1710,70 @@ function detectDevicePerformance() {
         else if (memory >= 4) score += 2;
         else score += 1;
     } else {
-        score += 2; // 默认中等分数
+        // 无法检测内存时，给予更宽松的默认分数
+        score += 2.5;
     }
 
-    // 检测设备类型
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const isTablet = /iPad|Android(?!.*Mobile)/i.test(navigator.userAgent);
+    // 检测高性能移动设备
+    const userAgent = navigator.userAgent;
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    const isTablet = /iPad|Android(?!.*Mobile)/i.test(userAgent);
+    const isIPhone = /iPhone/i.test(userAgent);
+    const isIPad = /iPad/i.test(userAgent);
 
-    if (isMobile && !isTablet) {
+    // 检测高性能iPhone（A15及以上芯片）
+    // iPhone 13 Pro及以上机型通常有6核心以上
+    const isHighPerformanceIPhone = isIPhone && cores >= 6;
+
+    // 检测高性能iPad（M系列或A系列高端芯片）
+    // iPad Pro通常有8核心
+    const isHighPerformanceIPad = isIPad && cores >= 8;
+
+    // 检测高性能Android设备（旗舰芯片）
+    // 现代旗舰Android设备通常有8核心
+    const isHighPerformanceAndroid = /Android/i.test(userAgent) && cores >= 8;
+
+    // 根据设备类型调整评分
+    if (isHighPerformanceIPhone) {
+        deviceInfo.push('设备类型: 高性能iPhone (A15+)');
+        score += 2; // 高性能iPhone给加分
+    } else if (isHighPerformanceIPad) {
+        deviceInfo.push('设备类型: 高性能iPad (M/A系列)');
+        score += 2.5; // 高性能iPad给更多加分
+    } else if (isHighPerformanceAndroid) {
+        deviceInfo.push('设备类型: 高性能Android设备');
+        score += 2;
+    } else if (isMobile && !isTablet) {
         deviceInfo.push('设备类型: 移动设备');
-        score -= 1;
+        // 不再扣分，现代移动设备性能强劲
     } else if (isTablet) {
         deviceInfo.push('设备类型: 平板');
+        score += 0.5;
     } else {
         deviceInfo.push('设备类型: 桌面');
         score += 1;
     }
 
-    // 根据分数推荐速度档位
-    // 修正阈值：评分最高为7（8核+8GB内存+桌面 = 3+3+1），确保 ultra 可触及
+    // 根据分数推荐速度档位（调整阈值以适应新的评分系统）
     let recommendedSpeed;
     let recommendation;
 
     if (score <= 3) {
         recommendedSpeed = 'slow';
-        recommendation = '推荐: 低速档位（检测到低配设备）';
+        recommendation = '推荐: 低速档位（低配设备）';
     } else if (score <= 5) {
         recommendedSpeed = 'medium';
-        recommendation = '推荐: 中速档位（检测到普通设备）';
-    } else if (score <= 6) {
+        recommendation = '推荐: 中速档位（普通设备）';
+    } else if (score <= 7) {
         recommendedSpeed = 'fast';
-        recommendation = '推荐: 高速档位（检测到高配设备）';
+        recommendation = '推荐: 高速档位（高配设备）';
     } else {
-        // score >= 7: 高性能设备（8核心 + 8GB内存 + 桌面）
+        // score > 7: 高性能设备
         recommendedSpeed = 'ultra';
-        recommendation = '推荐: 极速档位（检测到高性能设备）';
+        recommendation = '推荐: 极速档位（高性能设备）';
     }
 
-    console.log('设备性能检测:', deviceInfo.join(', '), `评分: ${score}`, recommendation);
+    console.log('设备性能检测:', deviceInfo.join(', '), `评分: ${score.toFixed(1)}`, recommendation);
 
     return { speed: recommendedSpeed, recommendation, deviceInfo };
 }
@@ -2614,11 +2717,11 @@ function checkPasswordStrength(password) {
     if (/[^a-zA-Z0-9]/.test(password)) strength++;
 
     if (strength <= 2) {
-        return { strength: 1, text: '弱密码 ⚠️', color: '#e74c3c' };
+        return { strength: 1, text: '弱密码 [不安全]', color: '#e74c3c' };
     } else if (strength <= 4) {
-        return { strength: 2, text: '中等强度 ⚡', color: '#f39c12' };
+        return { strength: 2, text: '中等强度 [可用]', color: '#f39c12' };
     } else {
-        return { strength: 3, text: '强密码 ✓', color: '#27ae60' };
+        return { strength: 3, text: '强密码 [安全]', color: '#27ae60' };
     }
 }
 
@@ -2635,7 +2738,7 @@ if (typeof document !== 'undefined') {
         console.log('文件破坏工具已加载');
         console.log('支持的破坏程度：轻度、中度、重度');
         console.log(`支持 ${Object.keys(SUPPORTED_FORMATS).length} 种文件格式`);
-        console.log('⚠️ 请勿用于不当用途');
+        console.log('[警告] 请勿用于不当用途');
 
         // 自动检测设备性能并设置推荐速度
         const performanceInfo = detectDevicePerformance();
