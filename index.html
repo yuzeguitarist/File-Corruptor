@@ -28,6 +28,12 @@
 
         <!-- 主要内容区 -->
         <main class="main-content">
+            <!-- 模式切换选项卡 -->
+            <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="corrupt">破坏模式</button>
+                <button class="mode-tab" data-mode="restore">恢复模式</button>
+            </div>
+
             <!-- 文件上传区 -->
             <section class="upload-section">
                 <div class="upload-area" id="uploadArea">
@@ -146,6 +152,24 @@
                                     <div class="option-desc">生成一份 JSON 报告，记录破坏操作细节。</div>
                                 </div>
                             </label>
+                            <label class="advanced-option">
+                                <input type="checkbox" id="reversibleMode">
+                                <div>
+                                    <div class="option-title">可逆破坏模式 🔐</div>
+                                    <div class="option-desc">使用AES-256加密技术安全保存修改记录，可通过密钥完全恢复原文件。</div>
+                                </div>
+                            </label>
+                            <div class="password-input-wrapper" id="passwordInputWrapper" style="display: none;">
+                                <div class="option-title" style="margin-bottom: 8px;">加密密钥</div>
+                                <div class="option-desc" style="margin-bottom: 12px;">
+                                    请输入一个强密码，用于加密保护恢复数据。请务必记住此密钥，丢失后将无法恢复文件！
+                                </div>
+                                <input type="password" id="encryptionPassword" placeholder="输入加密密钥（至少8个字符）"
+                                    style="width: 100%; padding: 10px; border: 2px solid var(--gray-400); border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 14px; margin-bottom: 8px;">
+                                <input type="password" id="encryptionPasswordConfirm" placeholder="再次输入密钥以确认"
+                                    style="width: 100%; padding: 10px; border: 2px solid var(--gray-400); border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 14px;">
+                                <div class="password-strength" id="passwordStrength" style="margin-top: 8px; font-size: 12px;"></div>
+                            </div>
                             <div class="advanced-option" style="display: block;">
                                 <div class="option-title" style="margin-bottom: 8px;">处理速度档位</div>
                                 <div class="option-desc" style="margin-bottom: 12px;">
@@ -188,6 +212,58 @@
                 <div class="report-card" id="reportCard" style="display: none;"></div>
                 <button class="btn btn-primary" id="continueBtn">继续破坏其他文件</button>
             </section>
+
+            <!-- 恢复模式区域 -->
+            <section class="restore-section" id="restoreSection" style="display: none;">
+                <div class="restore-upload-area" id="restoreUploadArea">
+                    <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="30" cy="30" r="20" stroke="black" stroke-width="2"/>
+                        <path d="M30 20 L30 35 M25 30 L30 35 L35 30" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M20 45 L40 45" stroke="black" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <p class="upload-text">上传需要恢复的文件</p>
+                    <p class="upload-hint">仅支持通过本工具可逆模式破坏的文件</p>
+                    <input type="file" id="restoreFileInput" class="file-input" accept="*/*">
+                </div>
+
+                <!-- 恢复文件信息 -->
+                <div class="restore-file-info" id="restoreFileInfo" style="display: none;">
+                    <div class="info-row">
+                        <span class="info-label">文件名：</span>
+                        <span class="info-value" id="restoreFileName"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">文件大小：</span>
+                        <span class="info-value" id="restoreFileSize"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">验证状态：</span>
+                        <span class="info-value" id="restoreVerifyStatus"></span>
+                    </div>
+                </div>
+
+                <!-- 密钥输入区 -->
+                <div class="restore-password-section" id="restorePasswordSection" style="display: none;">
+                    <h3 style="margin-bottom: 16px;">输入解密密钥</h3>
+                    <input type="password" id="restorePassword" placeholder="输入创建时使用的加密密钥"
+                        style="width: 100%; padding: 12px; border: 2px solid var(--gray-400); border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 14px; margin-bottom: 16px;">
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary" id="restoreCancelBtn">取消</button>
+                        <button class="btn btn-primary" id="restoreBtn">恢复文件</button>
+                    </div>
+                </div>
+
+                <!-- 恢复成功区 -->
+                <div class="restore-success" id="restoreSuccess" style="display: none;">
+                    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="40" cy="40" r="35" stroke="green" stroke-width="2"/>
+                        <path d="M25 40 L35 50 L55 30" stroke="green" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <h3 class="success-title">文件已成功恢复！</h3>
+                    <p class="success-desc">恢复后的原始文件已自动下载</p>
+                    <button class="btn btn-primary" id="restoreAnotherBtn">恢复其他文件</button>
+                </div>
+            </section>
         </main>
 
         <!-- 底部说明 -->
@@ -215,6 +291,8 @@
         </footer>
     </div>
 
+    <!-- pako 压缩库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

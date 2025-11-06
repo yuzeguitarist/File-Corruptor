@@ -648,3 +648,110 @@ body {
     }
 }
 
+/* ==================== 可逆模式样式 ==================== */
+
+/* 模式切换选项卡 */
+.mode-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: var(--spacing-lg);
+    border: 2px solid var(--black);
+    background-color: var(--white);
+}
+
+.mode-tab {
+    flex: 1;
+    padding: 12px 24px;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    background-color: var(--white);
+    border: none;
+    cursor: pointer;
+    transition: var(--transition);
+    color: var(--gray-500);
+    border-right: 2px solid var(--black);
+}
+
+.mode-tab:last-child {
+    border-right: none;
+}
+
+.mode-tab:hover {
+    background-color: var(--gray-100);
+}
+
+.mode-tab.active {
+    background-color: var(--black);
+    color: var(--white);
+}
+
+/* 密码输入包装器 */
+.password-input-wrapper {
+    padding: 16px;
+    border: 2px solid var(--gray-400);
+    border-radius: 4px;
+    background-color: var(--gray-100);
+    margin-top: 12px;
+}
+
+/* 恢复模式区域 */
+.restore-section {
+    margin-bottom: var(--spacing-lg);
+}
+
+.restore-upload-area {
+    border: 2px dashed var(--black);
+    padding: var(--spacing-xl);
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition);
+    background-color: var(--white);
+}
+
+.restore-upload-area:hover {
+    background-color: var(--gray-100);
+    border-color: var(--gray-500);
+}
+
+.restore-file-info {
+    border: 2px solid var(--black);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.restore-password-section {
+    border: 2px solid var(--black);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.restore-success {
+    text-align: center;
+    padding: var(--spacing-xl);
+}
+
+/* 密码强度指示器 */
+.password-strength {
+    padding: 8px;
+    background-color: var(--gray-200);
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+/* 响应式设计 */
+@media (max-width: 600px) {
+    .mode-tabs {
+        flex-direction: column;
+    }
+
+    .mode-tab {
+        border-right: none;
+        border-bottom: 2px solid var(--black);
+    }
+
+    .mode-tab:last-child {
+        border-bottom: none;
+    }
+}
+
