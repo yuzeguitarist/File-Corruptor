@@ -2441,9 +2441,6 @@ function resetApp() {
     }
     lastCorruptionReport = null;
 
-    // 不要在这里显示uploadArea，让模式切换逻辑来控制
-    // uploadArea.style.display = 'block'; // 删除这行
-
     // 重置单选按钮
     const lightRadio = document.querySelector('input[name="level"][value="light"]');
     if (lightRadio) {
@@ -2464,6 +2461,12 @@ function resetApp() {
     if (restorePasswordSection) restorePasswordSection.style.display = 'none';
     if (restoreSuccess) restoreSuccess.style.display = 'none';
     if (restoreUploadArea) restoreUploadArea.style.display = 'block';
+
+    // 检查当前激活的模式，如果是corrupt模式则显示uploadArea
+    const activeTab = document.querySelector('.mode-tab.active');
+    if (activeTab && activeTab.dataset.mode === 'corrupt') {
+        if (uploadArea) uploadArea.style.display = 'block';
+    }
 }
 
 // ==================== 浏览器兼容性检查 ====================
