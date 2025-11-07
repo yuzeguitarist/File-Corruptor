@@ -926,7 +926,14 @@ if (typeof document !== 'undefined') {
     let restoreFileData = null;
 
     if (restoreUploadArea && restoreFileInput) {
-        restoreUploadArea.addEventListener('click', () => {
+        // 点击上传区域时触发文件选择（但不要在点击文件输入框本身时重复触发）
+        restoreUploadArea.addEventListener('click', (e) => {
+            // 如果点击的就是文件输入框本身，不要重复触发
+            if (e.target === restoreFileInput) {
+                return;
+            }
+            // 阻止事件冒泡，避免重复触发
+            e.stopPropagation();
             restoreFileInput.click();
         });
 
@@ -942,50 +949,19 @@ if (typeof document !== 'undefined') {
 
         restoreUploadArea.addEventListener('drop', async (e) => {
             e.preventDefault();
+            e.stopPropagation();
             restoreUploadArea.classList.remove('dragover');
 
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                const file = files[0];
+                // 将文件设置到input元素，然后触发change事件（复用change事件的处理逻辑）
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(files[0]);
+                restoreFileInput.files = dataTransfer.files;
 
-                // 显示加载状态
-                statusSection.style.display = 'block';
-                statusText.textContent = '正在验证文件...';
-
-                try {
-                    // 读取文件
-                    const arrayBuffer = await file.arrayBuffer();
-                    const fileData = new Uint8Array(arrayBuffer);
-
-                    statusText.textContent = '正在检查文件格式...';
-
-                    // 验证是否为可逆文件
-                    const reversibleData = extractReversibleData(fileData);
-
-                    // 隐藏加载状态
-                    statusSection.style.display = 'none';
-
-                    if (!reversibleData) {
-                        showAlert('此文件不是通过可逆模式破坏的文件，无法恢复！\n\n请确保：\n1. 文件是通过本工具的"可逆破坏模式"创建的\n2. 文件未被二次修改');
-                        return;
-                    }
-
-                    // 显示文件信息
-                    restoreFileData = reversibleData;
-                    document.getElementById('restoreFileName').textContent = file.name;
-                    document.getElementById('restoreFileSize').textContent = formatFileSize(file.size);
-                    document.getElementById('restoreVerifyStatus').innerHTML = '<span style="color: green;">[可恢复] 文件验证通过</span>';
-
-                    restoreUploadArea.style.display = 'none';
-                    restoreFileInfo.style.display = 'block';
-                    restorePasswordSection.style.display = 'block';
-                } catch (error) {
-                    // 隐藏加载状态
-                    statusSection.style.display = 'none';
-
-                    console.error('文件验证失败:', error);
-                    showAlert(`文件验证失败：${error.message}`);
-                }
+                // 触发change事件
+                const event = new Event('change', { bubbles: true });
+                restoreFileInput.dispatchEvent(event);
             }
         });
 
