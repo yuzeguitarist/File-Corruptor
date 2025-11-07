@@ -2491,22 +2491,52 @@ function base64ToArray(base64) {
 }
 
 /**
- * 生成diff记录（记录所有被修改的字节）
+ * 生成diff记录（使用连续区间记录，而非逐字节）
+ * 这样可以避免在大文件上分配海量对象，导致内存耗尽
  * @param {Uint8Array} original - 原始数据
  * @param {Uint8Array} corrupted - 破坏后的数据
  * @returns {Object} diff记录
  */
 function generateDiff(original, corrupted) {
-    const changes = [];
+    const ranges = [];
     const length = Math.min(original.length, corrupted.length);
+
+    let rangeStart = -1;
+    let rangeBytes = [];
 
     for (let i = 0; i < length; i++) {
         if (original[i] !== corrupted[i]) {
-            changes.push({
-                offset: i,
-                original: original[i]
-            });
+            // 发现不同的字节
+            if (rangeStart === -1) {
+                // 开始新区间
+                rangeStart = i;
+                rangeBytes = [original[i]];
+            } else {
+                // 继续当前区间
+                rangeBytes.push(original[i]);
+            }
+        } else {
+            // 字节相同
+            if (rangeStart !== -1) {
+                // 结束当前区间
+                ranges.push({
+                    start: rangeStart,
+                    length: rangeBytes.length,
+                    originalBytes: arrayToBase64(new Uint8Array(rangeBytes))
+                });
+                rangeStart = -1;
+                rangeBytes = [];
+            }
         }
+    }
+
+    // 处理最后一个区间（如果存在）
+    if (rangeStart !== -1) {
+        ranges.push({
+            start: rangeStart,
+            length: rangeBytes.length,
+            originalBytes: arrayToBase64(new Uint8Array(rangeBytes))
+        });
     }
 
     // 如果长度不同，记录长度变化
@@ -2518,10 +2548,13 @@ function generateDiff(original, corrupted) {
         };
     }
 
+    // 计算总修改字节数
+    const totalChanges = ranges.reduce((sum, range) => sum + range.length, 0);
+
     return {
-        changes: changes,
+        ranges: ranges,
         lengthDiff: lengthDiff,
-        totalChanges: changes.length
+        totalChanges: totalChanges
     };
 }
 
@@ -2542,10 +2575,13 @@ function applyDiff(corrupted, diff) {
         restored[i] = corrupted[i];
     }
 
-    // 应用所有修改
-    for (const change of diff.changes) {
-        if (change.offset < restored.length) {
-            restored[change.offset] = change.original;
+    // 应用所有区间的修改
+    for (const range of diff.ranges) {
+        const originalBytes = base64ToArray(range.originalBytes);
+        const start = range.start;
+
+        for (let i = 0; i < originalBytes.length && (start + i) < restored.length; i++) {
+            restored[start + i] = originalBytes[i];
         }
     }
 
@@ -2637,10 +2673,11 @@ function extractReversibleData(fileData) {
     const endMarker = encoder.encode(REVERSIBLE_MARKER.end);
 
     // 从文件末尾向前查找结束标记
-    const searchStart = Math.max(0, fileData.length - 10000); // 只搜索最后10KB
+    // 增加搜索窗口到2MB，以支持较大的可逆数据
+    const endSearchWindow = Math.max(0, fileData.length - 2 * 1024 * 1024);
     let endMarkerPos = -1;
 
-    for (let i = fileData.length - endMarker.length; i >= searchStart; i--) {
+    for (let i = fileData.length - endMarker.length; i >= endSearchWindow; i--) {
         let match = true;
         for (let j = 0; j < endMarker.length; j++) {
             if (fileData[i + j] !== endMarker[j]) {
@@ -2658,9 +2695,10 @@ function extractReversibleData(fileData) {
         return null; // 不是可逆文件
     }
 
-    // 向前查找开始标记
+    // 从endMarkerPos向前查找开始标记，一直搜索到文件开头
+    // 这样可以支持任意大小的可逆数据
     let startMarkerPos = -1;
-    for (let i = endMarkerPos - 1; i >= searchStart; i--) {
+    for (let i = endMarkerPos - 1; i >= 0; i--) {
         let match = true;
         for (let j = 0; j < startMarker.length; j++) {
             if (fileData[i + j] !== startMarker[j]) {
@@ -2680,22 +2718,42 @@ function extractReversibleData(fileData) {
 
     // 读取信息长度
     const lengthOffset = startMarkerPos + startMarker.length;
-    const lengthView = new DataView(fileData.buffer, lengthOffset, 4);
+
+    // 边界检查：确保有足够的字节读取长度字段
+    if (lengthOffset + 4 > fileData.length) {
+        console.error('文件格式错误：无法读取信息长度');
+        return null;
+    }
+
+    const lengthView = new DataView(fileData.buffer, fileData.byteOffset + lengthOffset, 4);
     const infoLength = lengthView.getUint32(0, false);
 
     // 提取信息
     const infoOffset = lengthOffset + 4;
+
+    // 边界检查：确保信息数据在文件范围内
+    if (infoOffset + infoLength > fileData.length) {
+        console.error(`文件格式错误：信息长度 ${infoLength} 超出文件范围（剩余 ${fileData.length - infoOffset} 字节）`);
+        return null;
+    }
+
     const infoBytes = fileData.slice(infoOffset, infoOffset + infoLength);
-    const infoJson = decoder.decode(infoBytes);
-    const reversibleInfo = JSON.parse(infoJson);
 
-    // 提取原始破坏数据（不包含可逆信息部分）
-    const corruptedData = fileData.slice(0, startMarkerPos);
+    try {
+        const infoJson = decoder.decode(infoBytes);
+        const reversibleInfo = JSON.parse(infoJson);
 
-    return {
-        reversibleInfo: reversibleInfo,
-        corruptedData: corruptedData
-    };
+        // 提取原始破坏数据（不包含可逆信息部分）
+        const corruptedData = fileData.slice(0, startMarkerPos);
+
+        return {
+            reversibleInfo: reversibleInfo,
+            corruptedData: corruptedData
+        };
+    } catch (error) {
+        console.error('解析可逆信息失败:', error);
+        return null;
+    }
 }
 
 /**
