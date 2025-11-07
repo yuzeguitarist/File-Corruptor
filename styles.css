@@ -714,6 +714,12 @@ body {
     border-color: var(--gray-500);
 }
 
+.restore-upload-area.dragover {
+    background-color: var(--gray-200);
+    border-color: var(--black);
+    border-style: solid;
+}
+
 .restore-file-info {
     border: 2px solid var(--black);
     padding: var(--spacing-md);

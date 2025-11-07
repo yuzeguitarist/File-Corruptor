@@ -410,6 +410,38 @@ if (typeof document !== 'undefined') {
             handleFileSelect(files);
         }
     });
+
+    // 防止全局拖放（避免用户拖拽文件到页面其他位置时打开文件）
+    document.addEventListener('dragover', (e) => {
+        // 获取恢复上传区域（可能在DOM中不存在）
+        const restoreUploadArea = document.getElementById('restoreUploadArea');
+
+        // 检查拖拽是否在允许的区域内
+        const isInUploadArea = uploadArea && uploadArea.contains(e.target);
+        const isInRestoreArea = restoreUploadArea && restoreUploadArea.contains(e.target);
+
+        // 只阻止不在任何上传区域内的拖拽
+        if (!isInUploadArea && !isInRestoreArea) {
+            e.preventDefault();
+            if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = 'none';
+            }
+        }
+    });
+
+    document.addEventListener('drop', (e) => {
+        // 获取恢复上传区域（可能在DOM中不存在）
+        const restoreUploadArea = document.getElementById('restoreUploadArea');
+
+        // 检查drop是否在允许的区域内
+        const isInUploadArea = uploadArea && uploadArea.contains(e.target);
+        const isInRestoreArea = restoreUploadArea && restoreUploadArea.contains(e.target);
+
+        // 只阻止不在任何上传区域内的drop
+        if (!isInUploadArea && !isInRestoreArea) {
+            e.preventDefault();
+        }
+    });
 }
 
 // ==================== 文件处理函数 ====================
@@ -869,13 +901,17 @@ if (typeof document !== 'undefined') {
 
             if (mode === 'corrupt') {
                 // 破坏模式
-                uploadSection.style.display = 'block';
+                if (uploadSection) uploadSection.style.display = 'block';
                 if (restoreSection) restoreSection.style.display = 'none';
+                // 显示上传区域
+                if (uploadArea) uploadArea.style.display = 'block';
             } else if (mode === 'restore') {
                 // 恢复模式
-                uploadSection.style.display = 'none';
+                if (uploadSection) uploadSection.style.display = 'none';
                 if (restoreSection) restoreSection.style.display = 'block';
                 if (optionsSection) optionsSection.style.display = 'none';
+                // 隐藏破坏模式的上传区域
+                if (uploadArea) uploadArea.style.display = 'none';
             }
         });
     });
@@ -894,20 +930,90 @@ if (typeof document !== 'undefined') {
             restoreFileInput.click();
         });
 
+        // 添加拖放支持
+        restoreUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            restoreUploadArea.classList.add('dragover');
+        });
+
+        restoreUploadArea.addEventListener('dragleave', () => {
+            restoreUploadArea.classList.remove('dragover');
+        });
+
+        restoreUploadArea.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            restoreUploadArea.classList.remove('dragover');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+
+                // 显示加载状态
+                statusSection.style.display = 'block';
+                statusText.textContent = '正在验证文件...';
+
+                try {
+                    // 读取文件
+                    const arrayBuffer = await file.arrayBuffer();
+                    const fileData = new Uint8Array(arrayBuffer);
+
+                    statusText.textContent = '正在检查文件格式...';
+
+                    // 验证是否为可逆文件
+                    const reversibleData = extractReversibleData(fileData);
+
+                    // 隐藏加载状态
+                    statusSection.style.display = 'none';
+
+                    if (!reversibleData) {
+                        showAlert('此文件不是通过可逆模式破坏的文件，无法恢复！\n\n请确保：\n1. 文件是通过本工具的"可逆破坏模式"创建的\n2. 文件未被二次修改');
+                        return;
+                    }
+
+                    // 显示文件信息
+                    restoreFileData = reversibleData;
+                    document.getElementById('restoreFileName').textContent = file.name;
+                    document.getElementById('restoreFileSize').textContent = formatFileSize(file.size);
+                    document.getElementById('restoreVerifyStatus').innerHTML = '<span style="color: green;">[可恢复] 文件验证通过</span>';
+
+                    restoreUploadArea.style.display = 'none';
+                    restoreFileInfo.style.display = 'block';
+                    restorePasswordSection.style.display = 'block';
+                } catch (error) {
+                    // 隐藏加载状态
+                    statusSection.style.display = 'none';
+
+                    console.error('文件验证失败:', error);
+                    showAlert(`文件验证失败：${error.message}`);
+                }
+            }
+        });
+
         restoreFileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+
+            // 显示加载状态
+            statusSection.style.display = 'block';
+            statusText.textContent = '正在验证文件...';
 
             try {
                 // 读取文件
                 const arrayBuffer = await file.arrayBuffer();
                 const fileData = new Uint8Array(arrayBuffer);
 
+                statusText.textContent = '正在检查文件格式...';
+
                 // 验证是否为可逆文件
                 const reversibleData = extractReversibleData(fileData);
 
+                // 隐藏加载状态
+                statusSection.style.display = 'none';
+
                 if (!reversibleData) {
                     showAlert('此文件不是通过可逆模式破坏的文件，无法恢复！\n\n请确保：\n1. 文件是通过本工具的"可逆破坏模式"创建的\n2. 文件未被二次修改');
+                    // 重置文件输入
+                    restoreFileInput.value = '';
                     return;
                 }
 
@@ -921,8 +1027,14 @@ if (typeof document !== 'undefined') {
                 restoreFileInfo.style.display = 'block';
                 restorePasswordSection.style.display = 'block';
             } catch (error) {
+                // 隐藏加载状态
+                statusSection.style.display = 'none';
+
                 console.error('文件验证失败:', error);
                 showAlert(`文件验证失败：${error.message}`);
+
+                // 重置文件输入
+                restoreFileInput.value = '';
             }
         });
     }
@@ -2329,14 +2441,31 @@ function resetApp() {
     }
     lastCorruptionReport = null;
 
-    // 显示上传区域
-    uploadArea.style.display = 'block';
-
     // 重置单选按钮
-    document.querySelector('input[name="level"][value="light"]').checked = true;
+    const lightRadio = document.querySelector('input[name="level"][value="light"]');
+    if (lightRadio) {
+        lightRadio.checked = true;
+    }
 
     if (statusText) {
         statusText.textContent = '正在处理文件...';
+    }
+
+    // 重置恢复模式的状态
+    const restoreFileInfo = document.getElementById('restoreFileInfo');
+    const restorePasswordSection = document.getElementById('restorePasswordSection');
+    const restoreSuccess = document.getElementById('restoreSuccess');
+    const restoreUploadArea = document.getElementById('restoreUploadArea');
+
+    if (restoreFileInfo) restoreFileInfo.style.display = 'none';
+    if (restorePasswordSection) restorePasswordSection.style.display = 'none';
+    if (restoreSuccess) restoreSuccess.style.display = 'none';
+    if (restoreUploadArea) restoreUploadArea.style.display = 'block';
+
+    // 检查当前激活的模式，如果是corrupt模式则显示uploadArea
+    const activeTab = document.querySelector('.mode-tab.active');
+    if (activeTab && activeTab.dataset.mode === 'corrupt') {
+        if (uploadArea) uploadArea.style.display = 'block';
     }
 }
 
