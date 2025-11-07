@@ -2468,25 +2468,38 @@ async function decryptData(encryptedData, password, iv, salt) {
 }
 
 /**
- * 将Uint8Array转换为Base64
+ * 将Uint8Array转换为Base64（优化版，O(n)复杂度）
+ * 使用分块处理避免字符串拼接的O(n²)问题
  */
 function arrayToBase64(array) {
-    let binary = '';
-    for (let i = 0; i < array.length; i++) {
-        binary += String.fromCharCode(array[i]);
+    // 使用分块处理，避免超大字符串
+    const CHUNK_SIZE = 8192; // 8KB chunks
+    const chunks = [];
+
+    for (let i = 0; i < array.length; i += CHUNK_SIZE) {
+        const chunk = array.subarray(i, Math.min(i + CHUNK_SIZE, array.length));
+        // String.fromCharCode.apply 对每个块是线性的
+        chunks.push(String.fromCharCode.apply(null, chunk));
     }
+
+    // 数组join是O(n)，一次性分配内存
+    const binary = chunks.join('');
     return btoa(binary);
 }
 
 /**
- * 将Base64转换为Uint8Array
+ * 将Base64转换为Uint8Array（优化版，O(n)复杂度）
  */
 function base64ToArray(base64) {
     const binary = atob(base64);
-    const array = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
+    const len = binary.length;
+    const array = new Uint8Array(len);
+
+    // 直接写入，避免多次访问
+    for (let i = 0; i < len; i++) {
         array[i] = binary.charCodeAt(i);
     }
+
     return array;
 }
 
