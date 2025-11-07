@@ -2963,16 +2963,44 @@ function compressDiff(diff) {
 }
 
 /**
- * 解压diff数据（从二进制格式）
+ * 解压diff数据（支持新旧两种格式，向后兼容）
  * @param {Uint8Array} compressed - 压缩的数据
  * @returns {Object} diff对象
  */
 function decompressDiff(compressed) {
-    // 解压得到二进制数据
+    // 解压得到数据
     const decompressed = pako.ungzip(compressed);
 
-    // 从二进制格式反序列化
-    return deserializeDiff(decompressed);
+    // 格式检测：检查前4字节是否为"DIFF"魔数
+    const decoder = new TextDecoder();
+    const magic = decoder.decode(decompressed.slice(0, 4));
+
+    if (magic === 'DIFF') {
+        // 新格式：二进制格式（版本2）
+        return deserializeDiff(decompressed);
+    } else {
+        // 旧格式：JSON格式（版本1）
+        // 尝试将整个数据作为JSON字符串解析
+        try {
+            const jsonString = decoder.decode(decompressed);
+            const diff = JSON.parse(jsonString);
+
+            // 旧格式中，originalBytes是Base64字符串，需要转换为Uint8Array
+            // 以便与新格式的接口一致（applyDiff期望Uint8Array）
+            if (diff.ranges) {
+                for (const range of diff.ranges) {
+                    if (typeof range.originalBytes === 'string') {
+                        // 旧格式：Base64字符串 → 解码为Uint8Array
+                        range.originalBytes = base64ToArray(range.originalBytes);
+                    }
+                }
+            }
+
+            return diff;
+        } catch (error) {
+            throw new Error(`无法解析diff数据：不是有效的二进制格式或JSON格式。${error.message}`);
+        }
+    }
 }
 
 /**
