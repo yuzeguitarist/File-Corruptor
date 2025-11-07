@@ -975,15 +975,17 @@ if (typeof document !== 'undefined') {
             }
         }
 
-        // 点击上传区域时触发文件选择（但不要在点击文件输入框本身时重复触发）
+        // 点击上传区域时触发文件选择（参考破坏模式的交互逻辑）
         restoreUploadArea.addEventListener('click', (e) => {
-            // 如果点击的就是文件输入框本身，不要重复触发
-            if (e.target === restoreFileInput) {
+            // 只有在上传区域可见时才处理点击
+            if (restoreUploadArea.style.display === 'none') {
                 return;
             }
-            // 阻止事件冒泡，避免重复触发
-            e.stopPropagation();
-            restoreFileInput.click();
+            // 如果点击的不是文件输入框本身，触发文件选择
+            if (e.target !== restoreFileInput) {
+                e.preventDefault();
+                restoreFileInput.click();
+            }
         });
 
         // 添加拖放支持
@@ -2611,6 +2613,138 @@ function arrayToBase64(array) {
 }
 
 /**
+ * 二进制数据写入辅助类 - 用于高效构建二进制格式的diff数据
+ * 完全避免Base64编码和JSON序列化的内存膨胀问题
+ */
+class BinaryWriter {
+    constructor() {
+        this.buffers = [];
+        this.totalSize = 0;
+    }
+
+    writeUint8(value) {
+        const buffer = new Uint8Array(1);
+        buffer[0] = value & 0xFF;
+        this.buffers.push(buffer);
+        this.totalSize += 1;
+    }
+
+    writeUint16(value) {
+        const buffer = new Uint8Array(2);
+        buffer[0] = (value >> 8) & 0xFF;
+        buffer[1] = value & 0xFF;
+        this.buffers.push(buffer);
+        this.totalSize += 2;
+    }
+
+    writeUint32(value) {
+        const buffer = new Uint8Array(4);
+        buffer[0] = (value >> 24) & 0xFF;
+        buffer[1] = (value >> 16) & 0xFF;
+        buffer[2] = (value >> 8) & 0xFF;
+        buffer[3] = value & 0xFF;
+        this.buffers.push(buffer);
+        this.totalSize += 4;
+    }
+
+    writeUint64(value) {
+        // JavaScript number精度限制在2^53，对于文件大小足够
+        const high = Math.floor(value / 0x100000000);
+        const low = value & 0xFFFFFFFF;
+        this.writeUint32(high);
+        this.writeUint32(low);
+    }
+
+    writeBytes(bytes) {
+        this.buffers.push(bytes);
+        this.totalSize += bytes.length;
+    }
+
+    writeString(str) {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(str);
+        this.writeUint16(bytes.length);
+        this.writeBytes(bytes);
+    }
+
+    toUint8Array() {
+        const result = new Uint8Array(this.totalSize);
+        let offset = 0;
+        for (const buffer of this.buffers) {
+            result.set(buffer, offset);
+            offset += buffer.length;
+        }
+        return result;
+    }
+}
+
+/**
+ * 二进制数据读取辅助类
+ */
+class BinaryReader {
+    constructor(buffer) {
+        this.buffer = buffer;
+        this.offset = 0;
+    }
+
+    readUint8() {
+        if (this.offset + 1 > this.buffer.length) {
+            throw new Error('BinaryReader: 读取越界');
+        }
+        const value = this.buffer[this.offset];
+        this.offset += 1;
+        return value;
+    }
+
+    readUint16() {
+        if (this.offset + 2 > this.buffer.length) {
+            throw new Error('BinaryReader: 读取越界');
+        }
+        const value = (this.buffer[this.offset] << 8) | this.buffer[this.offset + 1];
+        this.offset += 2;
+        return value;
+    }
+
+    readUint32() {
+        if (this.offset + 4 > this.buffer.length) {
+            throw new Error('BinaryReader: 读取越界');
+        }
+        const value = (this.buffer[this.offset] << 24) |
+                      (this.buffer[this.offset + 1] << 16) |
+                      (this.buffer[this.offset + 2] << 8) |
+                      this.buffer[this.offset + 3];
+        this.offset += 4;
+        return value >>> 0; // 转换为无符号
+    }
+
+    readUint64() {
+        const high = this.readUint32();
+        const low = this.readUint32();
+        return high * 0x100000000 + low;
+    }
+
+    readBytes(length) {
+        if (this.offset + length > this.buffer.length) {
+            throw new Error('BinaryReader: 读取越界');
+        }
+        const bytes = this.buffer.slice(this.offset, this.offset + length);
+        this.offset += length;
+        return bytes;
+    }
+
+    readString() {
+        const length = this.readUint16();
+        const bytes = this.readBytes(length);
+        const decoder = new TextDecoder();
+        return decoder.decode(bytes);
+    }
+
+    hasMore() {
+        return this.offset < this.buffer.length;
+    }
+}
+
+/**
  * 将Base64转换为Uint8Array（优化版，O(n)复杂度）
  */
 function base64ToArray(base64) {
@@ -2654,11 +2788,11 @@ function generateDiff(original, corrupted) {
         } else {
             // 字节相同
             if (rangeStart !== -1) {
-                // 结束当前区间
+                // 结束当前区间 - 直接存储Uint8Array，不编码Base64
                 ranges.push({
                     start: rangeStart,
                     length: rangeBytes.length,
-                    originalBytes: arrayToBase64(new Uint8Array(rangeBytes))
+                    originalBytes: new Uint8Array(rangeBytes)
                 });
                 rangeStart = -1;
                 rangeBytes = [];
@@ -2671,7 +2805,7 @@ function generateDiff(original, corrupted) {
         ranges.push({
             start: rangeStart,
             length: rangeBytes.length,
-            originalBytes: arrayToBase64(new Uint8Array(rangeBytes))
+            originalBytes: new Uint8Array(rangeBytes)
         });
     }
 
@@ -2695,7 +2829,96 @@ function generateDiff(original, corrupted) {
 }
 
 /**
- * 应用diff恢复原始数据
+ * 将diff对象序列化为二进制格式（完全避免JSON和Base64）
+ * @param {Object} diff - diff对象
+ * @returns {Uint8Array} 序列化后的二进制数据
+ */
+function serializeDiff(diff) {
+    const writer = new BinaryWriter();
+
+    // 写入魔数和版本
+    writer.writeBytes(new TextEncoder().encode('DIFF')); // 4字节魔数
+    writer.writeUint16(2); // 版本2（二进制格式）
+
+    // 写入总修改字节数
+    writer.writeUint64(diff.totalChanges);
+
+    // 写入lengthDiff
+    if (diff.lengthDiff) {
+        writer.writeUint8(1); // 有lengthDiff
+        writer.writeUint64(diff.lengthDiff.originalLength);
+        writer.writeUint64(diff.lengthDiff.corruptedLength);
+    } else {
+        writer.writeUint8(0); // 无lengthDiff
+    }
+
+    // 写入ranges数量
+    writer.writeUint32(diff.ranges.length);
+
+    // 写入每个range
+    for (const range of diff.ranges) {
+        writer.writeUint64(range.start);
+        writer.writeUint32(range.length);
+        writer.writeBytes(range.originalBytes); // 直接写入原始字节，无编码
+    }
+
+    return writer.toUint8Array();
+}
+
+/**
+ * 从二进制格式反序列化diff对象
+ * @param {Uint8Array} data - 二进制数据
+ * @returns {Object} diff对象
+ */
+function deserializeDiff(data) {
+    const reader = new BinaryReader(data);
+
+    // 读取并验证魔数
+    const magic = new TextDecoder().decode(reader.readBytes(4));
+    if (magic !== 'DIFF') {
+        throw new Error('无效的diff数据格式');
+    }
+
+    // 读取版本
+    const version = reader.readUint16();
+    if (version !== 2) {
+        throw new Error(`不支持的diff版本: ${version}`);
+    }
+
+    // 读取总修改字节数
+    const totalChanges = reader.readUint64();
+
+    // 读取lengthDiff
+    let lengthDiff = null;
+    const hasLengthDiff = reader.readUint8();
+    if (hasLengthDiff === 1) {
+        lengthDiff = {
+            originalLength: reader.readUint64(),
+            corruptedLength: reader.readUint64()
+        };
+    }
+
+    // 读取ranges数量
+    const rangesCount = reader.readUint32();
+
+    // 读取每个range
+    const ranges = [];
+    for (let i = 0; i < rangesCount; i++) {
+        const start = reader.readUint64();
+        const length = reader.readUint32();
+        const originalBytes = reader.readBytes(length);
+        ranges.push({ start, length, originalBytes });
+    }
+
+    return {
+        ranges,
+        lengthDiff,
+        totalChanges
+    };
+}
+
+/**
+ * 应用diff恢复原始数据（支持二进制格式）
  * @param {Uint8Array} corrupted - 破坏后的数据
  * @param {Object} diff - diff记录
  * @returns {Uint8Array} 恢复后的原始数据
@@ -2713,7 +2936,8 @@ function applyDiff(corrupted, diff) {
 
     // 应用所有区间的修改
     for (const range of diff.ranges) {
-        const originalBytes = base64ToArray(range.originalBytes);
+        // 现在originalBytes直接是Uint8Array，不需要解码
+        const originalBytes = range.originalBytes;
         const start = range.start;
 
         for (let i = 0; i < originalBytes.length && (start + i) < restored.length; i++) {
@@ -2725,29 +2949,30 @@ function applyDiff(corrupted, diff) {
 }
 
 /**
- * 压缩diff数据
+ * 压缩diff数据（使用二进制格式，完全避免JSON和Base64）
+ * 这是性能优化的关键：直接序列化为二进制后压缩
  * @param {Object} diff - diff对象
  * @returns {Uint8Array} 压缩后的数据
  */
 function compressDiff(diff) {
-    const jsonString = JSON.stringify(diff);
-    const encoder = new TextEncoder();
-    const jsonBytes = encoder.encode(jsonString);
+    // 使用二进制序列化，直接生成Uint8Array
+    const binaryDiff = serializeDiff(diff);
 
-    // 使用pako进行gzip压缩
-    return pako.gzip(jsonBytes);
+    // 直接压缩二进制数据，无需JSON字符串中转
+    return pako.gzip(binaryDiff);
 }
 
 /**
- * 解压diff数据
+ * 解压diff数据（从二进制格式）
  * @param {Uint8Array} compressed - 压缩的数据
  * @returns {Object} diff对象
  */
 function decompressDiff(compressed) {
+    // 解压得到二进制数据
     const decompressed = pako.ungzip(compressed);
-    const decoder = new TextDecoder();
-    const jsonString = decoder.decode(decompressed);
-    return JSON.parse(jsonString);
+
+    // 从二进制格式反序列化
+    return deserializeDiff(decompressed);
 }
 
 /**
