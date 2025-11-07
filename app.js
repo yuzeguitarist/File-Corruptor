@@ -413,16 +413,32 @@ if (typeof document !== 'undefined') {
 
     // 防止全局拖放（避免用户拖拽文件到页面其他位置时打开文件）
     document.addEventListener('dragover', (e) => {
-        // 只阻止不在uploadArea内的拖拽
-        if (!uploadArea.contains(e.target)) {
+        // 获取恢复上传区域（可能在DOM中不存在）
+        const restoreUploadArea = document.getElementById('restoreUploadArea');
+
+        // 检查拖拽是否在允许的区域内
+        const isInUploadArea = uploadArea && uploadArea.contains(e.target);
+        const isInRestoreArea = restoreUploadArea && restoreUploadArea.contains(e.target);
+
+        // 只阻止不在任何上传区域内的拖拽
+        if (!isInUploadArea && !isInRestoreArea) {
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'none';
+            if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = 'none';
+            }
         }
     });
 
     document.addEventListener('drop', (e) => {
-        // 只阻止不在uploadArea内的drop
-        if (!uploadArea.contains(e.target)) {
+        // 获取恢复上传区域（可能在DOM中不存在）
+        const restoreUploadArea = document.getElementById('restoreUploadArea');
+
+        // 检查drop是否在允许的区域内
+        const isInUploadArea = uploadArea && uploadArea.contains(e.target);
+        const isInRestoreArea = restoreUploadArea && restoreUploadArea.contains(e.target);
+
+        // 只阻止不在任何上传区域内的drop
+        if (!isInUploadArea && !isInRestoreArea) {
             e.preventDefault();
         }
     });
