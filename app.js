@@ -291,6 +291,10 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
 // 注意：即使使用Blob，所有块在合并前仍在内存中
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
+// 可逆模式的文件大小限制：500MB
+// 超过此大小的文件无法使用可逆模式（因为需要在内存中生成和处理diff）
+const MAX_REVERSIBLE_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
 // 分块处理配置
 const CHUNK_PROCESSING_CONFIG = {
     chunkSize: 256 * 1024 * 1024, // 每块256MB
@@ -538,6 +542,78 @@ function handleFileSelect(files) {
     fileInfo.style.display = 'block';
     optionsSection.style.display = 'block';
     uploadArea.style.display = 'none';
+
+    // 检查并更新可逆模式的可用性
+    updateReversibleModeAvailability();
+}
+
+/**
+ * 更新可逆模式复选框的可用性（基于文件大小）
+ */
+function updateReversibleModeAvailability() {
+    const reversibleModeCheckbox = document.getElementById('reversibleMode');
+    const passwordInputWrapper = document.getElementById('passwordInputWrapper');
+
+    if (!reversibleModeCheckbox) return;
+
+    // 检查所有选中的文件是否都在500MB以内
+    let allFilesSupported = true;
+    let maxFileSize = 0;
+    let maxFileName = '';
+
+    for (const file of selectedFiles) {
+        if (file.size > maxFileSize) {
+            maxFileSize = file.size;
+            maxFileName = file.name;
+        }
+        if (file.size > MAX_REVERSIBLE_FILE_SIZE) {
+            allFilesSupported = false;
+        }
+    }
+
+    if (!allFilesSupported) {
+        // 禁用可逆模式
+        reversibleModeCheckbox.disabled = true;
+        reversibleModeCheckbox.checked = false;
+        if (passwordInputWrapper) {
+            passwordInputWrapper.style.display = 'none';
+        }
+
+        // 更新复选框的父元素样式，添加提示
+        const optionLabel = reversibleModeCheckbox.closest('.advanced-option');
+        if (optionLabel) {
+            optionLabel.style.opacity = '0.5';
+            optionLabel.style.cursor = 'not-allowed';
+
+            // 添加禁用原因提示
+            let hintDiv = optionLabel.querySelector('.reversible-hint');
+            if (!hintDiv) {
+                hintDiv = document.createElement('div');
+                hintDiv.className = 'reversible-hint';
+                hintDiv.style.cssText = 'margin-top: 8px; padding: 8px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 12px; color: #856404;';
+                const descDiv = optionLabel.querySelector('div:last-child');
+                if (descDiv) {
+                    descDiv.appendChild(hintDiv);
+                }
+            }
+            hintDiv.textContent = `不可用：文件 "${maxFileName}" (${formatFileSize(maxFileSize)}) 超过500MB限制。可逆模式仅支持500MB以内的文件。`;
+        }
+    } else {
+        // 启用可逆模式
+        reversibleModeCheckbox.disabled = false;
+
+        const optionLabel = reversibleModeCheckbox.closest('.advanced-option');
+        if (optionLabel) {
+            optionLabel.style.opacity = '1';
+            optionLabel.style.cursor = 'pointer';
+
+            // 移除禁用提示
+            const hintDiv = optionLabel.querySelector('.reversible-hint');
+            if (hintDiv) {
+                hintDiv.remove();
+            }
+        }
+    }
 }
 
 /**
@@ -741,6 +817,222 @@ if (typeof document !== 'undefined') {
     continueBtn.addEventListener('click', () => {
         resetApp();
     });
+
+    // ==================== 可逆模式UI事件 ====================
+
+    /**
+     * 可逆模式复选框 - 显示/隐藏密码输入框
+     */
+    const reversibleModeCheckbox = document.getElementById('reversibleMode');
+    const passwordInputWrapper = document.getElementById('passwordInputWrapper');
+    if (reversibleModeCheckbox && passwordInputWrapper) {
+        reversibleModeCheckbox.addEventListener('change', (e) => {
+            passwordInputWrapper.style.display = e.target.checked ? 'block' : 'none';
+        });
+    }
+
+    /**
+     * 密码强度检查
+     */
+    const encryptionPassword = document.getElementById('encryptionPassword');
+    const passwordStrengthDiv = document.getElementById('passwordStrength');
+    if (encryptionPassword && passwordStrengthDiv) {
+        encryptionPassword.addEventListener('input', (e) => {
+            const strengthInfo = checkPasswordStrength(e.target.value);
+            if (strengthInfo.strength > 0) {
+                passwordStrengthDiv.textContent = `密码强度：${strengthInfo.text}`;
+                passwordStrengthDiv.style.color = strengthInfo.color;
+            } else {
+                passwordStrengthDiv.textContent = '';
+            }
+        });
+    }
+
+    /**
+     * 模式切换按钮（破坏模式 vs 恢复模式）
+     */
+    const modeTabs = document.querySelectorAll('.mode-tab');
+    const uploadSection = document.querySelector('.upload-section');
+    const restoreSection = document.getElementById('restoreSection');
+    const optionsSection = document.getElementById('optionsSection');
+
+    modeTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const mode = tab.dataset.mode;
+
+            // 更新tab样式
+            modeTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // 重置应用状态
+            resetApp();
+
+            if (mode === 'corrupt') {
+                // 破坏模式
+                uploadSection.style.display = 'block';
+                if (restoreSection) restoreSection.style.display = 'none';
+            } else if (mode === 'restore') {
+                // 恢复模式
+                uploadSection.style.display = 'none';
+                if (restoreSection) restoreSection.style.display = 'block';
+                if (optionsSection) optionsSection.style.display = 'none';
+            }
+        });
+    });
+
+    /**
+     * 恢复模式：文件上传
+     */
+    const restoreUploadArea = document.getElementById('restoreUploadArea');
+    const restoreFileInput = document.getElementById('restoreFileInput');
+    const restoreFileInfo = document.getElementById('restoreFileInfo');
+    const restorePasswordSection = document.getElementById('restorePasswordSection');
+    let restoreFileData = null;
+
+    if (restoreUploadArea && restoreFileInput) {
+        restoreUploadArea.addEventListener('click', () => {
+            restoreFileInput.click();
+        });
+
+        restoreFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                // 读取文件
+                const arrayBuffer = await file.arrayBuffer();
+                const fileData = new Uint8Array(arrayBuffer);
+
+                // 验证是否为可逆文件
+                const reversibleData = extractReversibleData(fileData);
+
+                if (!reversibleData) {
+                    showAlert('此文件不是通过可逆模式破坏的文件，无法恢复！\n\n请确保：\n1. 文件是通过本工具的"可逆破坏模式"创建的\n2. 文件未被二次修改');
+                    return;
+                }
+
+                // 显示文件信息
+                restoreFileData = reversibleData;
+                document.getElementById('restoreFileName').textContent = file.name;
+                document.getElementById('restoreFileSize').textContent = formatFileSize(file.size);
+                document.getElementById('restoreVerifyStatus').innerHTML = '<span style="color: green;">[可恢复] 文件验证通过</span>';
+
+                restoreUploadArea.style.display = 'none';
+                restoreFileInfo.style.display = 'block';
+                restorePasswordSection.style.display = 'block';
+            } catch (error) {
+                console.error('文件验证失败:', error);
+                showAlert(`文件验证失败：${error.message}`);
+            }
+        });
+    }
+
+    /**
+     * 恢复模式：取消按钮
+     */
+    const restoreCancelBtn = document.getElementById('restoreCancelBtn');
+    if (restoreCancelBtn) {
+        restoreCancelBtn.addEventListener('click', () => {
+            restoreFileData = null;
+            restoreUploadArea.style.display = 'block';
+            restoreFileInfo.style.display = 'none';
+            restorePasswordSection.style.display = 'none';
+            if (restoreFileInput) restoreFileInput.value = '';
+        });
+    }
+
+    /**
+     * 恢复模式：恢复文件按钮
+     */
+    const restoreBtn = document.getElementById('restoreBtn');
+    const restoreSuccess = document.getElementById('restoreSuccess');
+    const restorePassword = document.getElementById('restorePassword');
+
+    if (restoreBtn) {
+        restoreBtn.addEventListener('click', async () => {
+            if (!restoreFileData) {
+                showAlert('请先上传文件！');
+                return;
+            }
+
+            const password = restorePassword ? restorePassword.value : '';
+            if (!password) {
+                showAlert('请输入解密密钥！');
+                return;
+            }
+
+            try {
+                // 显示状态
+                statusSection.style.display = 'block';
+                restorePasswordSection.style.display = 'none';
+                statusText.textContent = '正在解密恢复数据...';
+
+                const { reversibleInfo, corruptedData } = restoreFileData;
+
+                // 解码Base64
+                const iv = base64ToArray(reversibleInfo.iv);
+                const salt = base64ToArray(reversibleInfo.salt);
+                const encryptedDiff = base64ToArray(reversibleInfo.encryptedDiff);
+
+                // 解密diff
+                statusText.textContent = '正在验证密钥...';
+                let compressedDiff;
+                try {
+                    compressedDiff = await decryptData(encryptedDiff, password, iv, salt);
+                } catch (decryptError) {
+                    throw new Error('密钥错误！请确认输入的密钥是否正确。');
+                }
+
+                // 解压diff
+                statusText.textContent = '正在解压恢复数据...';
+                const diff = decompressDiff(compressedDiff);
+
+                // 应用diff恢复文件
+                statusText.textContent = '正在恢复原始文件...';
+                const restoredData = applyDiff(corruptedData, diff);
+
+                // 下载恢复后的文件
+                statusText.textContent = '恢复完成，正在下载...';
+                const blob = new Blob([restoredData]);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = reversibleInfo.originalFileName || 'restored_file';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                // 显示成功信息
+                statusSection.style.display = 'none';
+                restoreFileInfo.style.display = 'none';
+                restoreSuccess.style.display = 'block';
+
+                console.log('文件恢复成功！');
+            } catch (error) {
+                console.error('文件恢复失败:', error);
+                statusSection.style.display = 'none';
+                restorePasswordSection.style.display = 'block';
+                showAlert(`恢复失败：${error.message}`);
+            }
+        });
+    }
+
+    /**
+     * 恢复模式：恢复其他文件按钮
+     */
+    const restoreAnotherBtn = document.getElementById('restoreAnotherBtn');
+    if (restoreAnotherBtn) {
+        restoreAnotherBtn.addEventListener('click', () => {
+            restoreFileData = null;
+            restoreUploadArea.style.display = 'block';
+            restoreFileInfo.style.display = 'none';
+            restorePasswordSection.style.display = 'none';
+            restoreSuccess.style.display = 'none';
+            if (restoreFileInput) restoreFileInput.value = '';
+            if (restorePassword) restorePassword.value = '';
+        });
+    }
 } // 结束浏览器环境检查
 
 // ==================== 文件破坏核心逻辑 ====================
@@ -1033,6 +1325,65 @@ async function corruptFile(file, level, options) {
         }
     }
 
+    // 可逆破坏处理
+    if (options.reversibleMode && options.encryptionPassword) {
+        statusText.textContent = '生成恢复数据...';
+
+        try {
+            // 读取原始文件数据（用于生成diff）
+            const originalArrayBuffer = await file.arrayBuffer();
+            const originalData = new Uint8Array(originalArrayBuffer);
+
+            // 将结果转换为Uint8Array（如果是Blob）
+            let corruptedData;
+            if (dataResult instanceof Blob) {
+                const corruptedBuffer = await dataResult.arrayBuffer();
+                corruptedData = new Uint8Array(corruptedBuffer);
+            } else {
+                corruptedData = dataResult;
+            }
+
+            // 生成diff
+            statusText.textContent = '分析文件差异...';
+            const diff = generateDiff(originalData, corruptedData);
+
+            // 压缩diff
+            statusText.textContent = '压缩恢复数据...';
+            const compressedDiff = compressDiff(diff);
+
+            // 加密压缩后的diff
+            statusText.textContent = '加密恢复数据...';
+            const encryptedResult = await encryptData(compressedDiff, options.encryptionPassword);
+
+            // 构建可逆信息
+            const reversibleInfo = {
+                version: REVERSIBLE_MARKER.version,
+                timestamp: new Date().toISOString(),
+                originalFileName: file.name,
+                originalSize: originalData.length,
+                corruptedSize: corruptedData.length,
+                iv: arrayToBase64(encryptedResult.iv),
+                salt: arrayToBase64(encryptedResult.salt),
+                encryptedDiff: arrayToBase64(encryptedResult.encrypted),
+                diffSize: diff.totalChanges,
+                level: level,
+                strategy: strategy
+            };
+
+            // 嵌入可逆数据
+            statusText.textContent = '嵌入恢复信息...';
+            dataResult = embedReversibleData(corruptedData, reversibleInfo);
+
+            // 更新报告
+            corruptionResult.steps.push(`[可逆模式] 已加密保存 ${diff.totalChanges} 处修改记录`);
+            corruptionResult.steps.push(`[加密算法] AES-256-GCM with PBKDF2 (100000次迭代)`);
+            corruptionResult.steps.push(`[压缩后大小] ${formatFileSize(encryptedResult.encrypted.length)}`);
+        } catch (reversibleError) {
+            console.error('可逆处理失败:', reversibleError);
+            throw new Error(`可逆数据处理失败: ${reversibleError.message}`);
+        }
+    }
+
     statusText.textContent = '破坏完成，正在准备下载...';
     const downloadName = downloadCorruptedFile(dataResult, file.name, options);
     const report = buildCorruptionReport({
@@ -1305,12 +1656,34 @@ function getAdvancedOptions() {
     const downloadReport = document.getElementById('downloadReport');
     const embedSignature = document.getElementById('embedSignature');
     const processingSpeed = document.getElementById('processingSpeed');
+    const reversibleMode = document.getElementById('reversibleMode');
+    const encryptionPassword = document.getElementById('encryptionPassword');
+    const encryptionPasswordConfirm = document.getElementById('encryptionPasswordConfirm');
+
+    // 验证可逆模式的密码
+    let password = null;
+    if (reversibleMode && reversibleMode.checked) {
+        const pwd = encryptionPassword ? encryptionPassword.value : '';
+        const confirmPwd = encryptionPasswordConfirm ? encryptionPasswordConfirm.value : '';
+
+        if (!pwd || pwd.length < 8) {
+            throw new Error('可逆模式需要至少8个字符的加密密钥！');
+        }
+
+        if (pwd !== confirmPwd) {
+            throw new Error('两次输入的密钥不一致，请检查！');
+        }
+
+        password = pwd;
+    }
 
     return {
         randomizeName: randomizeName ? randomizeName.checked : false,
         downloadReport: downloadReport ? downloadReport.checked : false,
         embedSignature: embedSignature ? embedSignature.checked : true,
-        processingSpeed: processingSpeed ? processingSpeed.value : 'medium'
+        processingSpeed: processingSpeed ? processingSpeed.value : 'medium',
+        reversibleMode: reversibleMode ? reversibleMode.checked : false,
+        encryptionPassword: password
     };
 }
 
@@ -1325,6 +1698,7 @@ function detectDevicePerformance() {
     const cores = navigator.hardwareConcurrency || 2;
     deviceInfo.push(`CPU核心数: ${cores}`);
     if (cores >= 8) score += 3;
+    else if (cores >= 6) score += 2.5;
     else if (cores >= 4) score += 2;
     else score += 1;
 
@@ -1336,44 +1710,70 @@ function detectDevicePerformance() {
         else if (memory >= 4) score += 2;
         else score += 1;
     } else {
-        score += 2; // 默认中等分数
+        // 无法检测内存时，给予更宽松的默认分数
+        score += 2.5;
     }
 
-    // 检测设备类型
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const isTablet = /iPad|Android(?!.*Mobile)/i.test(navigator.userAgent);
+    // 检测高性能移动设备
+    const userAgent = navigator.userAgent;
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    const isTablet = /iPad|Android(?!.*Mobile)/i.test(userAgent);
+    const isIPhone = /iPhone/i.test(userAgent);
+    const isIPad = /iPad/i.test(userAgent);
 
-    if (isMobile && !isTablet) {
+    // 检测高性能iPhone（A15及以上芯片）
+    // iPhone 13 Pro及以上机型通常有6核心以上
+    const isHighPerformanceIPhone = isIPhone && cores >= 6;
+
+    // 检测高性能iPad（M系列或A系列高端芯片）
+    // iPad Pro通常有8核心
+    const isHighPerformanceIPad = isIPad && cores >= 8;
+
+    // 检测高性能Android设备（旗舰芯片）
+    // 现代旗舰Android设备通常有8核心
+    const isHighPerformanceAndroid = /Android/i.test(userAgent) && cores >= 8;
+
+    // 根据设备类型调整评分
+    if (isHighPerformanceIPhone) {
+        deviceInfo.push('设备类型: 高性能iPhone (A15+)');
+        score += 2; // 高性能iPhone给加分
+    } else if (isHighPerformanceIPad) {
+        deviceInfo.push('设备类型: 高性能iPad (M/A系列)');
+        score += 2.5; // 高性能iPad给更多加分
+    } else if (isHighPerformanceAndroid) {
+        deviceInfo.push('设备类型: 高性能Android设备');
+        score += 2;
+    } else if (isMobile && !isTablet) {
         deviceInfo.push('设备类型: 移动设备');
-        score -= 1;
+        // 不再扣分，现代移动设备性能强劲
     } else if (isTablet) {
         deviceInfo.push('设备类型: 平板');
+        score += 0.5;
     } else {
         deviceInfo.push('设备类型: 桌面');
         score += 1;
     }
 
-    // 根据分数推荐速度档位
-    // 修正阈值：评分最高为7（8核+8GB内存+桌面 = 3+3+1），确保 ultra 可触及
+    // 根据分数推荐速度档位（调整阈值以适应新的评分系统）
     let recommendedSpeed;
     let recommendation;
 
     if (score <= 3) {
         recommendedSpeed = 'slow';
-        recommendation = '推荐: 低速档位（检测到低配设备）';
+        recommendation = '推荐: 低速档位（低配设备）';
     } else if (score <= 5) {
         recommendedSpeed = 'medium';
-        recommendation = '推荐: 中速档位（检测到普通设备）';
-    } else if (score <= 6) {
+        recommendation = '推荐: 中速档位（普通设备）';
+    } else if (score <= 7) {
         recommendedSpeed = 'fast';
-        recommendation = '推荐: 高速档位（检测到高配设备）';
+        recommendation = '推荐: 高速档位（高配设备）';
     } else {
-        // score >= 7: 高性能设备（8核心 + 8GB内存 + 桌面）
+        // score > 7: 高性能设备
         recommendedSpeed = 'ultra';
-        recommendation = '推荐: 极速档位（检测到高性能设备）';
+        recommendation = '推荐: 极速档位（高性能设备）';
     }
 
-    console.log('设备性能检测:', deviceInfo.join(', '), `评分: ${score}`, recommendation);
+    console.log('设备性能检测:', deviceInfo.join(', '), `评分: ${score.toFixed(1)}`, recommendation);
 
     return { speed: recommendedSpeed, recommendation, deviceInfo };
 }
@@ -1963,6 +2363,439 @@ function checkBrowserCompatibility() {
     return true;
 }
 
+// ==================== 可逆破坏：加密/解密模块 ====================
+
+/**
+ * 可逆破坏的标记常量
+ */
+const REVERSIBLE_MARKER = {
+    start: '<< REVERSIBLE_CORRUPTION_V1 >>',
+    end: '<< END_REVERSIBLE_DATA >>',
+    version: 1
+};
+
+/**
+ * 使用PBKDF2从用户密码派生加密密钥
+ * @param {string} password - 用户输入的密码
+ * @param {Uint8Array} salt - 盐值
+ * @returns {Promise<CryptoKey>} 派生的加密密钥
+ */
+async function deriveKeyFromPassword(password, salt) {
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+
+    // 导入密码作为原始密钥
+    const baseKey = await crypto.subtle.importKey(
+        'raw',
+        passwordBuffer,
+        'PBKDF2',
+        false,
+        ['deriveKey']
+    );
+
+    // 使用PBKDF2派生AES-GCM密钥
+    return await crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000, // 10万次迭代，安全性高
+            hash: 'SHA-256'
+        },
+        baseKey,
+        {
+            name: 'AES-GCM',
+            length: 256 // AES-256
+        },
+        false,
+        ['encrypt', 'decrypt']
+    );
+}
+
+/**
+ * 使用AES-256-GCM加密数据
+ * @param {Uint8Array} data - 要加密的数据
+ * @param {string} password - 加密密码
+ * @returns {Promise<Object>} 包含加密数据、IV和盐值的对象
+ */
+async function encryptData(data, password) {
+    // 生成随机盐值和IV
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12)); // GCM推荐12字节
+
+    // 派生密钥
+    const key = await deriveKeyFromPassword(password, salt);
+
+    // 加密数据
+    const encryptedBuffer = await crypto.subtle.encrypt(
+        {
+            name: 'AES-GCM',
+            iv: iv
+        },
+        key,
+        data
+    );
+
+    return {
+        encrypted: new Uint8Array(encryptedBuffer),
+        iv: iv,
+        salt: salt
+    };
+}
+
+/**
+ * 使用AES-256-GCM解密数据
+ * @param {Uint8Array} encryptedData - 加密的数据
+ * @param {string} password - 解密密码
+ * @param {Uint8Array} iv - 初始化向量
+ * @param {Uint8Array} salt - 盐值
+ * @returns {Promise<Uint8Array>} 解密后的数据
+ */
+async function decryptData(encryptedData, password, iv, salt) {
+    // 派生密钥
+    const key = await deriveKeyFromPassword(password, salt);
+
+    // 解密数据
+    const decryptedBuffer = await crypto.subtle.decrypt(
+        {
+            name: 'AES-GCM',
+            iv: iv
+        },
+        key,
+        encryptedData
+    );
+
+    return new Uint8Array(decryptedBuffer);
+}
+
+/**
+ * 将Uint8Array转换为Base64（优化版，O(n)复杂度）
+ * 使用分块处理避免字符串拼接的O(n²)问题
+ */
+function arrayToBase64(array) {
+    // 使用分块处理，避免超大字符串
+    const CHUNK_SIZE = 8192; // 8KB chunks
+    const chunks = [];
+
+    for (let i = 0; i < array.length; i += CHUNK_SIZE) {
+        const chunk = array.subarray(i, Math.min(i + CHUNK_SIZE, array.length));
+        // String.fromCharCode.apply 对每个块是线性的
+        chunks.push(String.fromCharCode.apply(null, chunk));
+    }
+
+    // 数组join是O(n)，一次性分配内存
+    const binary = chunks.join('');
+    return btoa(binary);
+}
+
+/**
+ * 将Base64转换为Uint8Array（优化版，O(n)复杂度）
+ */
+function base64ToArray(base64) {
+    const binary = atob(base64);
+    const len = binary.length;
+    const array = new Uint8Array(len);
+
+    // 直接写入，避免多次访问
+    for (let i = 0; i < len; i++) {
+        array[i] = binary.charCodeAt(i);
+    }
+
+    return array;
+}
+
+/**
+ * 生成diff记录（使用连续区间记录，而非逐字节）
+ * 这样可以避免在大文件上分配海量对象，导致内存耗尽
+ * @param {Uint8Array} original - 原始数据
+ * @param {Uint8Array} corrupted - 破坏后的数据
+ * @returns {Object} diff记录
+ */
+function generateDiff(original, corrupted) {
+    const ranges = [];
+    const length = Math.min(original.length, corrupted.length);
+
+    let rangeStart = -1;
+    let rangeBytes = [];
+
+    for (let i = 0; i < length; i++) {
+        if (original[i] !== corrupted[i]) {
+            // 发现不同的字节
+            if (rangeStart === -1) {
+                // 开始新区间
+                rangeStart = i;
+                rangeBytes = [original[i]];
+            } else {
+                // 继续当前区间
+                rangeBytes.push(original[i]);
+            }
+        } else {
+            // 字节相同
+            if (rangeStart !== -1) {
+                // 结束当前区间
+                ranges.push({
+                    start: rangeStart,
+                    length: rangeBytes.length,
+                    originalBytes: arrayToBase64(new Uint8Array(rangeBytes))
+                });
+                rangeStart = -1;
+                rangeBytes = [];
+            }
+        }
+    }
+
+    // 处理最后一个区间（如果存在）
+    if (rangeStart !== -1) {
+        ranges.push({
+            start: rangeStart,
+            length: rangeBytes.length,
+            originalBytes: arrayToBase64(new Uint8Array(rangeBytes))
+        });
+    }
+
+    // 如果长度不同，记录长度变化
+    let lengthDiff = null;
+    if (original.length !== corrupted.length) {
+        lengthDiff = {
+            originalLength: original.length,
+            corruptedLength: corrupted.length
+        };
+    }
+
+    // 计算总修改字节数
+    const totalChanges = ranges.reduce((sum, range) => sum + range.length, 0);
+
+    return {
+        ranges: ranges,
+        lengthDiff: lengthDiff,
+        totalChanges: totalChanges
+    };
+}
+
+/**
+ * 应用diff恢复原始数据
+ * @param {Uint8Array} corrupted - 破坏后的数据
+ * @param {Object} diff - diff记录
+ * @returns {Uint8Array} 恢复后的原始数据
+ */
+function applyDiff(corrupted, diff) {
+    // 确定正确的长度
+    const targetLength = diff.lengthDiff ? diff.lengthDiff.originalLength : corrupted.length;
+    const restored = new Uint8Array(targetLength);
+
+    // 复制破坏后的数据
+    const copyLength = Math.min(corrupted.length, targetLength);
+    for (let i = 0; i < copyLength; i++) {
+        restored[i] = corrupted[i];
+    }
+
+    // 应用所有区间的修改
+    for (const range of diff.ranges) {
+        const originalBytes = base64ToArray(range.originalBytes);
+        const start = range.start;
+
+        for (let i = 0; i < originalBytes.length && (start + i) < restored.length; i++) {
+            restored[start + i] = originalBytes[i];
+        }
+    }
+
+    return restored;
+}
+
+/**
+ * 压缩diff数据
+ * @param {Object} diff - diff对象
+ * @returns {Uint8Array} 压缩后的数据
+ */
+function compressDiff(diff) {
+    const jsonString = JSON.stringify(diff);
+    const encoder = new TextEncoder();
+    const jsonBytes = encoder.encode(jsonString);
+
+    // 使用pako进行gzip压缩
+    return pako.gzip(jsonBytes);
+}
+
+/**
+ * 解压diff数据
+ * @param {Uint8Array} compressed - 压缩的数据
+ * @returns {Object} diff对象
+ */
+function decompressDiff(compressed) {
+    const decompressed = pako.ungzip(compressed);
+    const decoder = new TextDecoder();
+    const jsonString = decoder.decode(decompressed);
+    return JSON.parse(jsonString);
+}
+
+/**
+ * 将可逆数据嵌入到破坏后的文件中
+ * @param {Uint8Array} corruptedData - 破坏后的文件数据
+ * @param {Object} reversibleInfo - 可逆信息（包含加密的diff等）
+ * @returns {Uint8Array} 嵌入可逆数据后的文件
+ */
+function embedReversibleData(corruptedData, reversibleInfo) {
+    const encoder = new TextEncoder();
+
+    // 序列化可逆信息
+    const infoJson = JSON.stringify(reversibleInfo);
+    const infoBytes = encoder.encode(infoJson);
+
+    // 构建最终数据
+    const startMarker = encoder.encode(REVERSIBLE_MARKER.start);
+    const endMarker = encoder.encode(REVERSIBLE_MARKER.end);
+
+    // 总长度 = 原数据 + 开始标记 + 信息长度(4字节) + 信息 + 结束标记
+    const totalLength = corruptedData.length + startMarker.length + 4 + infoBytes.length + endMarker.length;
+    const result = new Uint8Array(totalLength);
+
+    let offset = 0;
+
+    // 复制破坏后的数据
+    result.set(corruptedData, offset);
+    offset += corruptedData.length;
+
+    // 写入开始标记
+    result.set(startMarker, offset);
+    offset += startMarker.length;
+
+    // 写入信息长度（4字节，大端序）
+    const lengthView = new DataView(result.buffer, offset, 4);
+    lengthView.setUint32(0, infoBytes.length, false);
+    offset += 4;
+
+    // 写入信息
+    result.set(infoBytes, offset);
+    offset += infoBytes.length;
+
+    // 写入结束标记
+    result.set(endMarker, offset);
+
+    return result;
+}
+
+/**
+ * 从文件中提取可逆数据
+ * @param {Uint8Array} fileData - 文件数据
+ * @returns {Object|null} 可逆信息，如果不是可逆文件则返回null
+ */
+function extractReversibleData(fileData) {
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const startMarker = encoder.encode(REVERSIBLE_MARKER.start);
+    const endMarker = encoder.encode(REVERSIBLE_MARKER.end);
+
+    // 从文件末尾向前查找结束标记
+    // 增加搜索窗口到2MB，以支持较大的可逆数据
+    const endSearchWindow = Math.max(0, fileData.length - 2 * 1024 * 1024);
+    let endMarkerPos = -1;
+
+    for (let i = fileData.length - endMarker.length; i >= endSearchWindow; i--) {
+        let match = true;
+        for (let j = 0; j < endMarker.length; j++) {
+            if (fileData[i + j] !== endMarker[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            endMarkerPos = i;
+            break;
+        }
+    }
+
+    if (endMarkerPos === -1) {
+        return null; // 不是可逆文件
+    }
+
+    // 从endMarkerPos向前查找开始标记，一直搜索到文件开头
+    // 这样可以支持任意大小的可逆数据
+    let startMarkerPos = -1;
+    for (let i = endMarkerPos - 1; i >= 0; i--) {
+        let match = true;
+        for (let j = 0; j < startMarker.length; j++) {
+            if (fileData[i + j] !== startMarker[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            startMarkerPos = i;
+            break;
+        }
+    }
+
+    if (startMarkerPos === -1) {
+        return null; // 标记不完整
+    }
+
+    // 读取信息长度
+    const lengthOffset = startMarkerPos + startMarker.length;
+
+    // 边界检查：确保有足够的字节读取长度字段
+    if (lengthOffset + 4 > fileData.length) {
+        console.error('文件格式错误：无法读取信息长度');
+        return null;
+    }
+
+    const lengthView = new DataView(fileData.buffer, fileData.byteOffset + lengthOffset, 4);
+    const infoLength = lengthView.getUint32(0, false);
+
+    // 提取信息
+    const infoOffset = lengthOffset + 4;
+
+    // 边界检查：确保信息数据在文件范围内
+    if (infoOffset + infoLength > fileData.length) {
+        console.error(`文件格式错误：信息长度 ${infoLength} 超出文件范围（剩余 ${fileData.length - infoOffset} 字节）`);
+        return null;
+    }
+
+    const infoBytes = fileData.slice(infoOffset, infoOffset + infoLength);
+
+    try {
+        const infoJson = decoder.decode(infoBytes);
+        const reversibleInfo = JSON.parse(infoJson);
+
+        // 提取原始破坏数据（不包含可逆信息部分）
+        const corruptedData = fileData.slice(0, startMarkerPos);
+
+        return {
+            reversibleInfo: reversibleInfo,
+            corruptedData: corruptedData
+        };
+    } catch (error) {
+        console.error('解析可逆信息失败:', error);
+        return null;
+    }
+}
+
+/**
+ * 检查密码强度
+ * @param {string} password - 密码
+ * @returns {Object} 强度信息
+ */
+function checkPasswordStrength(password) {
+    if (!password) {
+        return { strength: 0, text: '', color: '' };
+    }
+
+    let strength = 0;
+    if (password.length >= 8) strength++;
+    if (password.length >= 12) strength++;
+    if (/[a-z]/.test(password)) strength++;
+    if (/[A-Z]/.test(password)) strength++;
+    if (/[0-9]/.test(password)) strength++;
+    if (/[^a-zA-Z0-9]/.test(password)) strength++;
+
+    if (strength <= 2) {
+        return { strength: 1, text: '弱密码 [不安全]', color: '#e74c3c' };
+    } else if (strength <= 4) {
+        return { strength: 2, text: '中等强度 [可用]', color: '#f39c12' };
+    } else {
+        return { strength: 3, text: '强密码 [安全]', color: '#27ae60' };
+    }
+}
+
 // ==================== 初始化 ====================
 
 if (typeof document !== 'undefined') {
@@ -1976,7 +2809,7 @@ if (typeof document !== 'undefined') {
         console.log('文件破坏工具已加载');
         console.log('支持的破坏程度：轻度、中度、重度');
         console.log(`支持 ${Object.keys(SUPPORTED_FORMATS).length} 种文件格式`);
-        console.log('⚠️ 请勿用于不当用途');
+        console.log('[警告] 请勿用于不当用途');
 
         // 自动检测设备性能并设置推荐速度
         const performanceInfo = detectDevicePerformance();
