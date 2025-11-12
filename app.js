@@ -1373,8 +1373,9 @@ async function processLargeFileInChunks(file, level, context) {
     const fileSize = file.size;
 
     // 使用优化配置（根据硬件自动调整）
-    const config = getOptimizedConfig();
-    const chunkSize = config.chunkSize;
+    // 使用let使其在处理过程中可以被自适应调整
+    let currentConfig = getOptimizedConfig();
+    let chunkSize = currentConfig.chunkSize;
     const totalChunks = Math.ceil(fileSize / chunkSize);
 
     console.log(`📦 分块处理: 文件大小=${(fileSize/1024/1024).toFixed(1)}MB, 块大小=${(chunkSize/1024/1024).toFixed(0)}MB, 总块数=${totalChunks}`);
@@ -1447,14 +1448,26 @@ async function processLargeFileInChunks(file, level, context) {
             if (context.monitor) {
                 const memCheck = context.monitor.checkMemory();
                 if (memCheck.warning) {
-                    // 触发更频繁的垃圾回收
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    // 检测到内存警告：应用自适应降级配置
+                    const previousConfig = currentConfig;
+                    currentConfig = createAdaptiveConfig(currentConfig, context.monitor);
+
+                    // 如果配置发生变化，应用新的处理延迟
+                    if (currentConfig !== previousConfig) {
+                        console.log(`🔄 自适应降级: 延迟 ${previousConfig.processingDelay}ms → ${currentConfig.processingDelay}ms`);
+                        // 立即应用更长的延迟以缓解内存压力
+                        await new Promise(resolve => setTimeout(resolve, currentConfig.processingDelay));
+                    } else {
+                        // 未触发降级，但仍需额外延迟以缓解内存压力
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
                 }
             }
 
             // 允许浏览器在处理块之间进行垃圾回收
-            if (i % 4 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
+            // 使用当前配置的处理延迟
+            if (i % 4 === 0 && currentConfig.processingDelay > 0) {
+                await new Promise(resolve => setTimeout(resolve, Math.min(currentConfig.processingDelay / 4, 100)));
             }
         }
 
@@ -1464,6 +1477,11 @@ async function processLargeFileInChunks(file, level, context) {
         }
 
         const resultBlob = new Blob(blobParts, { type: 'application/octet-stream' });
+
+        // 报告自适应降级情况
+        if (context.monitor && context.monitor.degraded) {
+            console.log(`📊 处理完成: 检测到 ${context.monitor.memoryWarnings} 次内存警告，已应用自适应降级`);
+        }
 
         return { data: resultBlob, bytesModified: totalBytesModified };
 
@@ -2417,18 +2435,29 @@ async function checkMemorySafety(fileSize) {
 /**
  * 自适应降级策略
  * 当检测到性能问题时自动降低处理强度
+ * @param {Object} baseConfig - 基础配置
+ * @param {PerformanceMonitor} monitor - 性能监控器
+ * @returns {Object} 调整后的配置（如果需要降级）或原配置
  */
 function createAdaptiveConfig(baseConfig, monitor) {
     if (!monitor.degraded && monitor.memoryWarnings > 2) {
-        console.warn('⚠️ 检测到多次内存警告，启用降级模式');
-        monitor.degraded = true;
-
-        return {
+        const adaptedConfig = {
             ...baseConfig,
             chunkSize: Math.floor(baseConfig.chunkSize / 2),
             processingDelay: baseConfig.processingDelay * 2,
             maxChunksInMemory: 1
         };
+
+        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.warn('⚠️ 自适应降级已启用');
+        console.warn(`  内存警告次数: ${monitor.memoryWarnings}`);
+        console.warn(`  块大小: ${(baseConfig.chunkSize/1024/1024).toFixed(0)}MB → ${(adaptedConfig.chunkSize/1024/1024).toFixed(0)}MB`);
+        console.warn(`  处理延迟: ${baseConfig.processingDelay}ms → ${adaptedConfig.processingDelay}ms`);
+        console.warn(`  内存中块数: ${baseConfig.maxChunksInMemory} → ${adaptedConfig.maxChunksInMemory}`);
+        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        monitor.degraded = true;
+        return adaptedConfig;
     }
 
     return baseConfig;
