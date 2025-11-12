@@ -277,14 +277,26 @@
                 <span>本工具仅供学习测试使用，请勿用于不当用途。破坏后的文件无法恢复，请保留原文件备份。</span>
             </div>
             
+            <!-- 硬件信息显示区 -->
+            <div class="hardware-info" id="hardwareInfo" style="margin-top: 15px; padding: 12px; background: var(--gray-100); border-radius: 8px; display: none;">
+                <div style="font-size: 13px; color: var(--gray-700); margin-bottom: 8px;">
+                    <strong>🔧 硬件检测结果</strong>
+                </div>
+                <div id="hardwareDetails" style="font-size: 12px; color: var(--gray-600); line-height: 1.6;">
+                    正在检测...
+                </div>
+            </div>
+
             <div class="footer-links">
                 <a href="privacy.html" class="footer-link">隐私政策</a>
                 <span class="footer-divider">|</span>
                 <a href="terms.html" class="footer-link">使用条款</a>
                 <span class="footer-divider">|</span>
                 <a href="disclaimer.html" class="footer-link">免责声明</a>
+                <span class="footer-divider">|</span>
+                <a href="#" class="footer-link" id="toggleHardwareInfo">显示硬件信息</a>
             </div>
-            
+
             <div class="copyright">
                 © 2025 Yuze Pan. All rights reserved.
             </div>
