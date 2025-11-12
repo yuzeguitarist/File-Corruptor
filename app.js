@@ -2478,7 +2478,12 @@ function initHardwareInfoDisplay(performanceInfo) {
     // 切换显示/隐藏
     toggleButton.addEventListener('click', (e) => {
         e.preventDefault();
-        if (hardwareInfoDiv.style.display === 'none') {
+
+        // 使用计算后的样式来正确判断当前状态
+        const computedDisplay = window.getComputedStyle(hardwareInfoDiv).display;
+        const isHidden = computedDisplay === 'none';
+
+        if (isHidden) {
             hardwareInfoDiv.style.display = 'block';
             toggleButton.textContent = '隐藏硬件信息';
         } else {
