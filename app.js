@@ -2203,10 +2203,15 @@ function detectDevicePerformance() {
     const memoryStrategy = MEMORY_STRATEGIES[memoryTier];
     const performanceTier = PERFORMANCE_TIERS[recommendedSpeed];
 
+    // 使用较慢的延迟以适应最慢的子系统（内存或CPU）
+    // 并限制在合理范围内：50ms (ultra) 到 1000ms (slow)
+    const rawDelay = Math.max(memoryStrategy.processingDelay, performanceTier.delay);
+    const clampedDelay = Math.max(50, Math.min(rawDelay, 1000));
+
     const optimizedConfig = {
         chunkSize: memoryStrategy.chunkSize,
         maxChunksInMemory: memoryStrategy.maxChunksInMemory,
-        processingDelay: Math.min(memoryStrategy.processingDelay, performanceTier.delay),
+        processingDelay: clampedDelay,
         maxFileSize: memoryStrategy.maxFileSize,
         tier: recommendedSpeed,
         memoryTier: memoryTier
