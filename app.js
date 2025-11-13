@@ -1457,19 +1457,23 @@ async function corruptFile(file, level, options) {
                     }
                 };
 
-                // 使用分块方式生成diff（直接传入File和Blob，不转换为Uint8Array）
-                diff = await generateDiffInChunks(file, dataResult, progressCallback);
+                // 确保dataResult是Blob/File格式（generateDiffInChunks需要）
+                // 对于20MB-256MB之间的文件，dataResult可能是Uint8Array
+                let corruptedBlob;
+                if (dataResult instanceof Blob) {
+                    corruptedBlob = dataResult;
+                    corruptedData = new Uint8Array(await dataResult.arrayBuffer());
+                } else {
+                    // dataResult是Uint8Array，需要转换为Blob
+                    corruptedData = dataResult;
+                    corruptedBlob = new Blob([dataResult], { type: 'application/octet-stream' });
+                }
+
+                // 使用分块方式生成diff（传入File和Blob）
+                diff = await generateDiffInChunks(file, corruptedBlob, progressCallback);
 
                 originalSize = file.size;
-                corruptedSize = dataResult.size || dataResult.length;
-
-                // 获取corruptedData用于最后的嵌入（只在这里转换一次）
-                if (dataResult instanceof Blob) {
-                    const corruptedBuffer = await dataResult.arrayBuffer();
-                    corruptedData = new Uint8Array(corruptedBuffer);
-                } else {
-                    corruptedData = dataResult;
-                }
+                corruptedSize = corruptedData.length;
             } else {
                 // 小文件（<=20MB）：使用传统方式
                 statusText.textContent = '分析文件差异...';
