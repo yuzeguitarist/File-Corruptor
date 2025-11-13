@@ -291,9 +291,16 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
 // 注意：即使使用Blob，所有块在合并前仍在内存中
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
-// 可逆模式的文件大小限制：500MB
-// 超过此大小的文件无法使用可逆模式（因为需要在内存中生成和处理diff）
-const MAX_REVERSIBLE_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+// 可逆模式的文件大小限制：256MB（保守值，确保内存安全）
+//
+// 限制原因：
+// 1. 嵌入可逆数据需要将整个文件转换为Uint8Array（embedReversibleData要求）
+// 2. 在内存受限设备上，接近500MB会导致内存爆炸
+// 3. 保守的256MB限制确保：原文件(256MB) + 破坏后(256MB) + diff数据(~50MB) ≈ 562MB
+//    在大多数现代设备上可安全处理
+//
+// 注意：超过此大小的文件仍可使用非可逆模式进行破坏（最大2GB）
+const MAX_REVERSIBLE_FILE_SIZE = 256 * 1024 * 1024; // 256MB
 
 // 分块处理配置
 const CHUNK_PROCESSING_CONFIG = {
@@ -630,7 +637,7 @@ function updateReversibleModeAvailability() {
                     descDiv.appendChild(hintDiv);
                 }
             }
-            hintDiv.textContent = `不可用：文件 "${maxFileName}" (${formatFileSize(maxFileSize)}) 超过500MB限制。可逆模式仅支持500MB以内的文件。`;
+            hintDiv.textContent = `不可用：文件 "${maxFileName}" (${formatFileSize(maxFileSize)}) 超过256MB限制。可逆模式仅支持256MB以内的文件（为确保内存安全）。`;
         }
     } else {
         // 启用可逆模式
@@ -1348,6 +1355,18 @@ async function processLargeFileInChunks(file, level, context) {
  */
 async function corruptFile(file, level, options) {
     const startTime = getTimestamp();
+    const fileSize = file.size;
+
+    // 可逆模式内存安全检查（运行时强制）
+    // 即使UI已检查，仍需在此验证以防止直接调用或绕过UI的情况
+    if (options.reversibleMode && fileSize > MAX_REVERSIBLE_FILE_SIZE) {
+        throw new Error(
+            `可逆模式不支持大于 ${formatFileSize(MAX_REVERSIBLE_FILE_SIZE)} 的文件。\n` +
+            `当前文件: ${file.name} (${formatFileSize(fileSize)})\n` +
+            `原因：可逆模式需要在内存中完整加载文件以嵌入恢复数据，超过此大小会导致内存不足。\n` +
+            `建议：使用非可逆模式破坏此文件，或选择较小的文件使用可逆模式。`
+        );
+    }
 
     // 获取文件扩展名及类别
     const extension = extractExtension(file.name);
@@ -1356,7 +1375,6 @@ async function corruptFile(file, level, options) {
 
     const randomSeed = generateSeed();
     const random = createRandomGenerator(randomSeed);
-    const fileSize = file.size;
 
     const corruptionContext = {
         fileSize: fileSize,
@@ -2804,6 +2822,84 @@ function base64ToArray(base64) {
 }
 
 /**
+ * DiffRangeCollector - 用于收集和管理diff范围的辅助类
+ * 统一了 generateDiff 和 generateDiffInChunks 的核心逻辑
+ */
+class DiffRangeCollector {
+    constructor() {
+        this.ranges = [];
+        this.totalChanges = 0;
+        this.rangeStart = -1;
+        this.rangeBytes = [];
+    }
+
+    /**
+     * 处理一个字节的比较结果
+     * @param {number} position - 绝对位置
+     * @param {number} originalByte - 原始字节值
+     * @param {number} corruptedByte - 破坏后的字节值
+     */
+    processByte(position, originalByte, corruptedByte) {
+        if (originalByte !== corruptedByte) {
+            // 发现不同的字节
+            if (this.rangeStart === -1) {
+                // 开始新区间
+                this.rangeStart = position;
+                this.rangeBytes = [originalByte];
+            } else {
+                // 继续当前区间
+                this.rangeBytes.push(originalByte);
+            }
+        } else {
+            // 字节相同，结束当前区间（如果有）
+            this.flushCurrentRange();
+        }
+    }
+
+    /**
+     * 刷新当前区间到ranges数组
+     */
+    flushCurrentRange() {
+        if (this.rangeStart !== -1) {
+            this.ranges.push({
+                start: this.rangeStart,
+                length: this.rangeBytes.length,
+                originalBytes: new Uint8Array(this.rangeBytes)
+            });
+            this.totalChanges += this.rangeBytes.length;
+            this.rangeStart = -1;
+            this.rangeBytes = [];
+        }
+    }
+
+    /**
+     * 获取最终的diff结果
+     * @param {number} originalLength - 原始文件长度
+     * @param {number} corruptedLength - 破坏后文件长度
+     * @returns {Object} diff记录
+     */
+    getResult(originalLength, corruptedLength) {
+        // 确保最后的区间被刷新
+        this.flushCurrentRange();
+
+        // 如果长度不同，记录长度变化
+        let lengthDiff = null;
+        if (originalLength !== corruptedLength) {
+            lengthDiff = {
+                originalLength: originalLength,
+                corruptedLength: corruptedLength
+            };
+        }
+
+        return {
+            ranges: this.ranges,
+            lengthDiff: lengthDiff,
+            totalChanges: this.totalChanges
+        };
+    }
+}
+
+/**
  * 生成diff记录（使用连续区间记录，而非逐字节）
  * 这样可以避免在大文件上分配海量对象，导致内存耗尽
  * @param {Uint8Array} original - 原始数据
@@ -2811,64 +2907,14 @@ function base64ToArray(base64) {
  * @returns {Object} diff记录
  */
 function generateDiff(original, corrupted) {
-    const ranges = [];
+    const collector = new DiffRangeCollector();
     const length = Math.min(original.length, corrupted.length);
 
-    let rangeStart = -1;
-    let rangeBytes = [];
-
     for (let i = 0; i < length; i++) {
-        if (original[i] !== corrupted[i]) {
-            // 发现不同的字节
-            if (rangeStart === -1) {
-                // 开始新区间
-                rangeStart = i;
-                rangeBytes = [original[i]];
-            } else {
-                // 继续当前区间
-                rangeBytes.push(original[i]);
-            }
-        } else {
-            // 字节相同
-            if (rangeStart !== -1) {
-                // 结束当前区间 - 直接存储Uint8Array，不编码Base64
-                ranges.push({
-                    start: rangeStart,
-                    length: rangeBytes.length,
-                    originalBytes: new Uint8Array(rangeBytes)
-                });
-                rangeStart = -1;
-                rangeBytes = [];
-            }
-        }
+        collector.processByte(i, original[i], corrupted[i]);
     }
 
-    // 处理最后一个区间（如果存在）
-    if (rangeStart !== -1) {
-        ranges.push({
-            start: rangeStart,
-            length: rangeBytes.length,
-            originalBytes: new Uint8Array(rangeBytes)
-        });
-    }
-
-    // 如果长度不同，记录长度变化
-    let lengthDiff = null;
-    if (original.length !== corrupted.length) {
-        lengthDiff = {
-            originalLength: original.length,
-            corruptedLength: corrupted.length
-        };
-    }
-
-    // 计算总修改字节数
-    const totalChanges = ranges.reduce((sum, range) => sum + range.length, 0);
-
-    return {
-        ranges: ranges,
-        lengthDiff: lengthDiff,
-        totalChanges: totalChanges
-    };
+    return collector.getResult(original.length, corrupted.length);
 }
 
 /**
@@ -2883,11 +2929,7 @@ async function generateDiffInChunks(originalFile, corruptedFile, progressCallbac
     const fileSize = Math.min(originalFile.size, corruptedFile.size);
     const totalChunks = Math.ceil(fileSize / chunkSize);
 
-    const ranges = [];
-    let totalChanges = 0;
-
-    let rangeStart = -1;
-    let rangeBytes = [];
+    const collector = new DiffRangeCollector();
     let globalOffset = 0;
 
     // 分块比较
@@ -2905,35 +2947,10 @@ async function generateDiffInChunks(originalFile, corruptedFile, progressCallbac
         const originalChunk = new Uint8Array(await originalFile.slice(start, end).arrayBuffer());
         const corruptedChunk = new Uint8Array(await corruptedFile.slice(start, end).arrayBuffer());
 
-        // 逐字节比较当前块
+        // 逐字节比较当前块，使用统一的collector
         for (let i = 0; i < originalChunk.length; i++) {
             const absolutePos = globalOffset + i;
-
-            if (originalChunk[i] !== corruptedChunk[i]) {
-                // 发现不同的字节
-                if (rangeStart === -1) {
-                    // 开始新区间
-                    rangeStart = absolutePos;
-                    rangeBytes = [originalChunk[i]];
-                } else {
-                    // 继续当前区间
-                    rangeBytes.push(originalChunk[i]);
-                }
-            } else {
-                // 字节相同
-                if (rangeStart !== -1) {
-                    // 结束当前区间
-                    ranges.push({
-                        start: rangeStart,
-                        length: rangeBytes.length,
-                        originalBytes: new Uint8Array(rangeBytes)
-                    });
-                    totalChanges += rangeBytes.length;
-
-                    rangeStart = -1;
-                    rangeBytes = [];
-                }
-            }
+            collector.processByte(absolutePos, originalChunk[i], corruptedChunk[i]);
         }
 
         globalOffset += originalChunk.length;
@@ -2944,30 +2961,7 @@ async function generateDiffInChunks(originalFile, corruptedFile, progressCallbac
         }
     }
 
-    // 处理最后一个区间（如果存在）
-    if (rangeStart !== -1 && rangeBytes.length > 0) {
-        ranges.push({
-            start: rangeStart,
-            length: rangeBytes.length,
-            originalBytes: new Uint8Array(rangeBytes)
-        });
-        totalChanges += rangeBytes.length;
-    }
-
-    // 处理长度差异
-    let lengthDiff = null;
-    if (originalFile.size !== corruptedFile.size) {
-        lengthDiff = {
-            originalLength: originalFile.size,
-            corruptedLength: corruptedFile.size
-        };
-    }
-
-    return {
-        ranges: ranges,
-        lengthDiff: lengthDiff,
-        totalChanges: totalChanges
-    };
+    return collector.getResult(originalFile.size, corruptedFile.size);
 }
 
 /**
