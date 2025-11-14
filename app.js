@@ -319,6 +319,129 @@ const SIGNATURE_SCAN_CONFIG = {
     midWindowBytes: 256 * 1024
 };
 
+// ==================== 硬件性能配置 ====================
+
+// SoC芯片性能评分表（满分10分）
+const SOC_PERFORMANCE_SCORES = {
+    // Apple芯片
+    'A19 Pro': { score: 10, tier: 'ultra', cores: 6, gpu: 'high' },
+    'A19': { score: 9.5, tier: 'ultra', cores: 6, gpu: 'high' },
+    'A18 Pro': { score: 9.5, tier: 'ultra', cores: 6, gpu: 'high' },
+    'A18': { score: 9, tier: 'ultra', cores: 6, gpu: 'high' },
+    'A17 Pro': { score: 9, tier: 'ultra', cores: 6, gpu: 'high' },
+    'A17': { score: 8.5, tier: 'fast', cores: 6, gpu: 'medium' },
+    'A16 Bionic': { score: 8.5, tier: 'fast', cores: 6, gpu: 'medium' },
+    'A15 Bionic': { score: 8, tier: 'fast', cores: 6, gpu: 'medium' },
+    'A14 Bionic': { score: 7.5, tier: 'fast', cores: 6, gpu: 'medium' },
+    'A13 Bionic': { score: 7, tier: 'fast', cores: 6, gpu: 'medium' },
+
+    // Apple M系列芯片（桌面级）
+    'M4': { score: 10, tier: 'ultra', cores: 10, gpu: 'ultra' },
+    'M3 Ultra': { score: 10, tier: 'ultra', cores: 24, gpu: 'ultra' },
+    'M3 Max': { score: 9.5, tier: 'ultra', cores: 16, gpu: 'ultra' },
+    'M3 Pro': { score: 9, tier: 'ultra', cores: 12, gpu: 'high' },
+    'M3': { score: 8.5, tier: 'fast', cores: 8, gpu: 'high' },
+    'M2 Ultra': { score: 9.5, tier: 'ultra', cores: 24, gpu: 'ultra' },
+    'M2 Max': { score: 9, tier: 'ultra', cores: 12, gpu: 'high' },
+    'M2 Pro': { score: 8.5, tier: 'fast', cores: 12, gpu: 'high' },
+    'M2': { score: 8, tier: 'fast', cores: 8, gpu: 'high' },
+    'M1 Ultra': { score: 9, tier: 'ultra', cores: 20, gpu: 'ultra' },
+    'M1 Max': { score: 8.5, tier: 'fast', cores: 10, gpu: 'high' },
+    'M1 Pro': { score: 8, tier: 'fast', cores: 10, gpu: 'high' },
+    'M1': { score: 7.5, tier: 'fast', cores: 8, gpu: 'medium' },
+
+    // NVIDIA GPU
+    'RTX 5090': { score: 10, tier: 'ultra', cores: 24, gpu: 'ultra' },
+    'RTX 5080': { score: 9.5, tier: 'ultra', cores: 20, gpu: 'ultra' },
+    'RTX 4090': { score: 9.5, tier: 'ultra', cores: 24, gpu: 'ultra' },
+    'RTX 4080': { score: 9, tier: 'ultra', cores: 16, gpu: 'ultra' },
+    'RTX 4070': { score: 8.5, tier: 'fast', cores: 12, gpu: 'high' },
+    'RTX 3090': { score: 9, tier: 'ultra', cores: 24, gpu: 'ultra' },
+    'RTX 3080': { score: 8.5, tier: 'fast', cores: 16, gpu: 'high' },
+    'RTX 3070': { score: 8, tier: 'fast', cores: 12, gpu: 'high' },
+
+    // Intel桌面处理器
+    'i9-14900K': { score: 9.5, tier: 'ultra', cores: 24, gpu: 'low' },
+    'i9-13900K': { score: 9, tier: 'ultra', cores: 24, gpu: 'low' },
+    'i9-12900K': { score: 8.5, tier: 'fast', cores: 16, gpu: 'low' },
+    'i7-14700K': { score: 8.5, tier: 'fast', cores: 20, gpu: 'low' },
+    'i7-13700K': { score: 8, tier: 'fast', cores: 16, gpu: 'low' },
+
+    // AMD桌面处理器
+    'Ryzen 9 7950X': { score: 9.5, tier: 'ultra', cores: 16, gpu: 'low' },
+    'Ryzen 9 7900X': { score: 9, tier: 'ultra', cores: 12, gpu: 'low' },
+    'Ryzen 7 7700X': { score: 8.5, tier: 'fast', cores: 8, gpu: 'low' },
+
+    // 高通骁龙（Android）
+    'Snapdragon 8 Gen 3': { score: 9, tier: 'ultra', cores: 8, gpu: 'high' },
+    'Snapdragon 8 Gen 2': { score: 8.5, tier: 'fast', cores: 8, gpu: 'high' },
+    'Snapdragon 8 Gen 1': { score: 8, tier: 'fast', cores: 8, gpu: 'medium' },
+    'Snapdragon 888': { score: 7.5, tier: 'fast', cores: 8, gpu: 'medium' },
+
+    // 联发科天玑（Android）
+    'Dimensity 9300': { score: 8.5, tier: 'fast', cores: 8, gpu: 'high' },
+    'Dimensity 9200': { score: 8, tier: 'fast', cores: 8, gpu: 'medium' },
+};
+
+// 内存配置策略（根据可用内存调整处理参数）
+const MEMORY_STRATEGIES = {
+    low: {      // < 4GB
+        label: '低内存模式',
+        chunkSize: 128 * 1024 * 1024,  // 128MB块
+        maxChunksInMemory: 1,
+        processingDelay: 1000,
+        maxFileSize: 500 * 1024 * 1024  // 限制500MB
+    },
+    medium: {   // 4-8GB
+        label: '标准内存模式',
+        chunkSize: 256 * 1024 * 1024,  // 256MB块
+        maxChunksInMemory: 2,
+        processingDelay: 500,
+        maxFileSize: 1024 * 1024 * 1024  // 1GB
+    },
+    high: {     // 8-16GB
+        label: '高内存模式',
+        chunkSize: 512 * 1024 * 1024,  // 512MB块
+        maxChunksInMemory: 3,
+        processingDelay: 200,
+        maxFileSize: 2 * 1024 * 1024 * 1024  // 2GB
+    },
+    ultra: {    // > 16GB
+        label: '超高内存模式',
+        chunkSize: 1024 * 1024 * 1024,  // 1GB块
+        maxChunksInMemory: 4,
+        processingDelay: 50,
+        maxFileSize: 2 * 1024 * 1024 * 1024  // 2GB
+    }
+};
+
+// 性能档位配置
+const PERFORMANCE_TIERS = {
+    slow: {
+        label: '低速档位',
+        delay: 1000,
+        description: '适用于低配设备，减少内存压力'
+    },
+    medium: {
+        label: '中速档位',
+        delay: 500,
+        description: '适用于普通设备，平衡性能和稳定性'
+    },
+    fast: {
+        label: '高速档位',
+        delay: 200,
+        description: '适用于高配设备，快速处理'
+    },
+    ultra: {
+        label: '极速档位',
+        delay: 50,
+        description: '适用于高性能设备，极速处理'
+    }
+};
+
+// 全局硬件配置缓存
+let hardwareConfig = null;
+
 const SPECIAL_EXTENSION_RULES = [
     {
         match: (name) => name === 'dockerfile' || name.startsWith('dockerfile.'),
@@ -1257,8 +1380,14 @@ function applyCorruptionToChunk(chunkData, chunkStart, chunkBudget, level, conte
  */
 async function processLargeFileInChunks(file, level, context) {
     const fileSize = file.size;
-    const chunkSize = CHUNK_PROCESSING_CONFIG.chunkSize;
+
+    // 使用优化配置（根据硬件自动调整）
+    // 使用let使其在处理过程中可以被自适应调整
+    let currentConfig = getOptimizedConfig();
+    let chunkSize = currentConfig.chunkSize;
     const totalChunks = Math.ceil(fileSize / chunkSize);
+
+    console.log(`📦 分块处理: 文件大小=${(fileSize/1024/1024).toFixed(1)}MB, 块大小=${(chunkSize/1024/1024).toFixed(0)}MB, 总块数=${totalChunks}`);
 
     // 计算总的目标破坏字节数
     let totalTargetCount;
@@ -1324,9 +1453,30 @@ async function processLargeFileInChunks(file, level, context) {
             // 将处理后的块添加到BlobParts（浏览器管理内存）
             blobParts.push(chunkData);
 
+            // 内存监控和自适应优化
+            if (context.monitor) {
+                const memCheck = context.monitor.checkMemory();
+                if (memCheck.warning) {
+                    // 检测到内存警告：应用自适应降级配置
+                    const previousConfig = currentConfig;
+                    currentConfig = createAdaptiveConfig(currentConfig, context.monitor);
+
+                    // 如果配置发生变化，应用新的处理延迟
+                    if (currentConfig !== previousConfig) {
+                        console.log(`🔄 自适应降级: 延迟 ${previousConfig.processingDelay}ms → ${currentConfig.processingDelay}ms`);
+                        // 立即应用更长的延迟以缓解内存压力
+                        await new Promise(resolve => setTimeout(resolve, currentConfig.processingDelay));
+                    } else {
+                        // 未触发降级，但仍需额外延迟以缓解内存压力
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
+                }
+            }
+
             // 允许浏览器在处理块之间进行垃圾回收
-            if (i % 4 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
+            // 使用当前配置的处理延迟
+            if (i % 4 === 0 && currentConfig.processingDelay > 0) {
+                await new Promise(resolve => setTimeout(resolve, Math.min(currentConfig.processingDelay / 4, 100)));
             }
         }
 
@@ -1336,6 +1486,11 @@ async function processLargeFileInChunks(file, level, context) {
         }
 
         const resultBlob = new Blob(blobParts, { type: 'application/octet-stream' });
+
+        // 报告自适应降级情况
+        if (context.monitor && context.monitor.degraded) {
+            console.log(`📊 处理完成: 检测到 ${context.monitor.memoryWarnings} 次内存警告，已应用自适应降级`);
+        }
 
         return { data: resultBlob, bytesModified: totalBytesModified };
 
@@ -1368,6 +1523,19 @@ async function corruptFile(file, level, options) {
         );
     }
 
+    // 创建性能监控器
+    const monitor = new PerformanceMonitor();
+    monitor.start();
+
+    // 内存安全检查
+    try {
+        await checkMemorySafety(file.size);
+        monitor.checkpoint('内存安全检查');
+    } catch (error) {
+        console.error('❌ 内存安全检查失败:', error);
+        throw error;
+    }
+
     // 获取文件扩展名及类别
     const extension = extractExtension(file.name);
     const categoryKey = getFileCategory(extension);
@@ -1383,14 +1551,18 @@ async function corruptFile(file, level, options) {
         strategy,
         seed: randomSeed,
         options,
-        random
+        random,
+        monitor  // 传递监控器
     };
 
     let dataResult; // 可以是 Uint8Array 或 Blob
     let corruptionResult;
 
-    // 根据文件大小选择处理策略
-    const usesChunkedProcessing = fileSize > CHUNK_PROCESSING_CONFIG.largeFileThreshold;
+    // 根据文件大小和硬件配置选择处理策略
+    const config = getOptimizedConfig();
+    const usesChunkedProcessing = fileSize > config.chunkSize;
+
+    monitor.checkpoint('初始化完成');
 
     if (usesChunkedProcessing) {
         // 大文件：使用分块处理（返回Blob）
@@ -1554,7 +1726,13 @@ async function corruptFile(file, level, options) {
     }
 
     statusText.textContent = '破坏完成，正在准备下载...';
+
+    monitor.checkpoint('文件处理完成');
+
     const downloadName = downloadCorruptedFile(dataResult, file.name, options);
+
+    monitor.checkpoint('文件下载准备完成');
+
     const report = buildCorruptionReport({
         file,
         level,
@@ -1568,6 +1746,9 @@ async function corruptFile(file, level, options) {
         seed: randomSeed,
         usedChunkedProcessing: usesChunkedProcessing
     });
+
+    // 输出性能报告
+    monitor.report();
 
     renderReport(report);
     if (options.downloadReport) {
@@ -1856,110 +2037,578 @@ function getAdvancedOptions() {
     };
 }
 
+// ==================== 高级硬件检测模块 ====================
+
 /**
- * 检测设备性能并推荐速度档位
+ * 检测SoC芯片型号
+ * 通过UserAgent、WebGL信息等多种方式识别具体芯片
+ */
+function detectSoCChip() {
+    const ua = navigator.userAgent;
+    let chipName = null;
+    let chipInfo = null;
+
+    // 检测Apple设备
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+        // 尝试通过设备型号推断芯片
+        // iPhone 15 Pro -> A17 Pro, iPhone 15 -> A16
+        // iPad Pro M2/M1等
+
+        // 通过核心数推断（粗略估计）
+        const cores = navigator.hardwareConcurrency || 4;
+
+        if (/iPad/i.test(ua)) {
+            if (cores >= 10) {
+                chipName = 'M2'; // M2或更新
+                chipInfo = SOC_PERFORMANCE_SCORES['M2'];
+            } else if (cores >= 8) {
+                chipName = 'M1'; // M1或A14X
+                chipInfo = SOC_PERFORMANCE_SCORES['M1'];
+            } else if (cores >= 6) {
+                chipName = 'A15 Bionic';
+                chipInfo = SOC_PERFORMANCE_SCORES['A15 Bionic'];
+            }
+        } else if (/iPhone/i.test(ua)) {
+            if (cores >= 6) {
+                // iPhone 13 Pro及以上
+                chipName = 'A15 Bionic'; // 默认A15+
+                chipInfo = SOC_PERFORMANCE_SCORES['A15 Bionic'];
+            } else if (cores >= 4) {
+                chipName = 'A13 Bionic';
+                chipInfo = SOC_PERFORMANCE_SCORES['A13 Bionic'];
+            }
+        }
+    }
+
+    // 检测Android设备（通过常见标识）
+    else if (/Android/i.test(ua)) {
+        // 检测高通骁龙
+        if (/Snapdragon/i.test(ua)) {
+            if (/8 Gen 3/i.test(ua)) {
+                chipName = 'Snapdragon 8 Gen 3';
+            } else if (/8 Gen 2/i.test(ua)) {
+                chipName = 'Snapdragon 8 Gen 2';
+            } else if (/888/i.test(ua)) {
+                chipName = 'Snapdragon 888';
+            }
+            chipInfo = SOC_PERFORMANCE_SCORES[chipName];
+        }
+        // 检测联发科
+        else if (/Dimensity/i.test(ua)) {
+            if (/9300/i.test(ua)) {
+                chipName = 'Dimensity 9300';
+            } else if (/9200/i.test(ua)) {
+                chipName = 'Dimensity 9200';
+            }
+            chipInfo = SOC_PERFORMANCE_SCORES[chipName];
+        }
+    }
+
+    // 检测桌面处理器（通过核心数推断）
+    else {
+        const cores = navigator.hardwareConcurrency || 4;
+        // 桌面处理器通常核心数较多
+        if (cores >= 20) {
+            chipName = 'i9-14900K'; // 或同级别
+            chipInfo = SOC_PERFORMANCE_SCORES['i9-14900K'];
+        } else if (cores >= 16) {
+            chipName = 'i9-13900K';
+            chipInfo = SOC_PERFORMANCE_SCORES['i9-13900K'];
+        } else if (cores >= 12) {
+            chipName = 'i7-13700K';
+            chipInfo = SOC_PERFORMANCE_SCORES['i7-13700K'];
+        }
+    }
+
+    return { chipName, chipInfo };
+}
+
+/**
+ * 检测GPU信息
+ * 通过WebGL获取GPU型号
+ */
+function detectGPU() {
+    try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+        if (!gl) {
+            return { name: null, vendor: null };
+        }
+
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (!debugInfo) {
+            return { name: null, vendor: null };
+        }
+
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+
+        // 检测NVIDIA RTX系列
+        let gpuInfo = null;
+        if (/RTX 5090/i.test(renderer)) {
+            gpuInfo = SOC_PERFORMANCE_SCORES['RTX 5090'];
+        } else if (/RTX 5080/i.test(renderer)) {
+            gpuInfo = SOC_PERFORMANCE_SCORES['RTX 5080'];
+        } else if (/RTX 4090/i.test(renderer)) {
+            gpuInfo = SOC_PERFORMANCE_SCORES['RTX 4090'];
+        } else if (/RTX 4080/i.test(renderer)) {
+            gpuInfo = SOC_PERFORMANCE_SCORES['RTX 4080'];
+        } else if (/RTX 4070/i.test(renderer)) {
+            gpuInfo = SOC_PERFORMANCE_SCORES['RTX 4070'];
+        } else if (/RTX 3090/i.test(renderer)) {
+            gpuInfo = SOC_PERFORMANCE_SCORES['RTX 3090'];
+        } else if (/RTX 3080/i.test(renderer)) {
+            gpuInfo = SOC_PERFORMANCE_SCORES['RTX 3080'];
+        } else if (/RTX 3070/i.test(renderer)) {
+            gpuInfo = SOC_PERFORMANCE_SCORES['RTX 3070'];
+        }
+
+        return {
+            name: renderer,
+            vendor: vendor,
+            info: gpuInfo
+        };
+    } catch (e) {
+        console.warn('GPU检测失败:', e);
+        return { name: null, vendor: null };
+    }
+}
+
+/**
+ * 获取内存档位
+ */
+function getMemoryTier(memoryGB) {
+    if (!memoryGB) return 'medium'; // 默认
+    if (memoryGB < 4) return 'low';
+    if (memoryGB < 8) return 'medium';
+    if (memoryGB < 16) return 'high';
+    return 'ultra';
+}
+
+/**
+ * 检测设备性能并推荐速度档位（增强版）
+ * 返回 { speed, recommendation, deviceInfo, hardwareConfig, chipName, gpuName, memoryTier }
  */
 function detectDevicePerformance() {
     let score = 0;
     let deviceInfo = [];
 
-    // 检测CPU核心数
+    // 1. 检测CPU核心数
     const cores = navigator.hardwareConcurrency || 2;
     deviceInfo.push(`CPU核心数: ${cores}`);
-    if (cores >= 8) score += 3;
-    else if (cores >= 6) score += 2.5;
-    else if (cores >= 4) score += 2;
-    else score += 1;
 
-    // 检测内存（如果可用）
+    // 2. 检测内存
+    const memory = navigator.deviceMemory || 4; // GB，默认4GB
+    const memoryTier = getMemoryTier(memory);
     if (navigator.deviceMemory) {
-        const memory = navigator.deviceMemory; // GB
-        deviceInfo.push(`内存: ${memory}GB`);
-        if (memory >= 8) score += 3;
-        else if (memory >= 4) score += 2;
-        else score += 1;
+        deviceInfo.push(`内存: ${memory}GB (${MEMORY_STRATEGIES[memoryTier].label})`);
     } else {
-        // 无法检测内存时，给予更宽松的默认分数
-        score += 2.5;
+        deviceInfo.push(`内存: 未知 (默认${MEMORY_STRATEGIES[memoryTier].label})`);
     }
 
-    // 检测高性能移动设备
+    // 3. 检测SoC芯片
+    const { chipName, chipInfo } = detectSoCChip();
+    if (chipName && chipInfo) {
+        deviceInfo.push(`芯片: ${chipName}`);
+        score = chipInfo.score; // 使用芯片评分
+        console.log(`✓ 检测到芯片: ${chipName}, 评分: ${chipInfo.score}`);
+    } else {
+        // 回退到基于核心数的评分
+        if (cores >= 16) score = 8.5;
+        else if (cores >= 12) score = 8;
+        else if (cores >= 8) score = 7;
+        else if (cores >= 6) score = 6;
+        else if (cores >= 4) score = 5;
+        else score = 4;
+
+        deviceInfo.push(`芯片: 未识别 (基于${cores}核心)`);
+    }
+
+    // 4. 检测GPU
+    const gpu = detectGPU();
+    if (gpu.name) {
+        deviceInfo.push(`GPU: ${gpu.name}`);
+        if (gpu.info) {
+            // GPU信息可以进一步提升评分
+            score = Math.max(score, gpu.info.score);
+            console.log(`✓ 检测到GPU: ${gpu.name}, 评分: ${gpu.info.score}`);
+        }
+    }
+
+    // 5. 根据内存调整评分
+    if (memory >= 16) score += 1;
+    else if (memory >= 8) score += 0.5;
+    else if (memory < 4) score -= 0.5;
+
+    // 6. 设备类型检测
     const userAgent = navigator.userAgent;
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
     const isTablet = /iPad|Android(?!.*Mobile)/i.test(userAgent);
     const isIPhone = /iPhone/i.test(userAgent);
     const isIPad = /iPad/i.test(userAgent);
 
-    // 检测高性能iPhone（A15及以上芯片）
-    // iPhone 13 Pro及以上机型通常有6核心以上
-    const isHighPerformanceIPhone = isIPhone && cores >= 6;
-
-    // 检测高性能iPad（M系列或A系列高端芯片）
-    // iPad Pro通常有8核心
-    const isHighPerformanceIPad = isIPad && cores >= 8;
-
-    // 检测高性能Android设备（旗舰芯片）
-    // 现代旗舰Android设备通常有8核心
-    const isHighPerformanceAndroid = /Android/i.test(userAgent) && cores >= 8;
-
-    // 根据设备类型调整评分
-    if (isHighPerformanceIPhone) {
-        deviceInfo.push('设备类型: 高性能iPhone (A15+)');
-        score += 2; // 高性能iPhone给加分
-    } else if (isHighPerformanceIPad) {
-        deviceInfo.push('设备类型: 高性能iPad (M/A系列)');
-        score += 2.5; // 高性能iPad给更多加分
-    } else if (isHighPerformanceAndroid) {
-        deviceInfo.push('设备类型: 高性能Android设备');
-        score += 2;
-    } else if (isMobile && !isTablet) {
-        deviceInfo.push('设备类型: 移动设备');
-        // 不再扣分，现代移动设备性能强劲
+    if (isIPhone) {
+        deviceInfo.push('设备类型: iPhone');
+    } else if (isIPad) {
+        deviceInfo.push('设备类型: iPad');
     } else if (isTablet) {
-        deviceInfo.push('设备类型: 平板');
-        score += 0.5;
+        deviceInfo.push('设备类型: Android平板');
+    } else if (isMobile) {
+        deviceInfo.push('设备类型: Android手机');
     } else {
-        deviceInfo.push('设备类型: 桌面');
-        score += 1;
+        deviceInfo.push('设备类型: 桌面设备');
     }
 
-    // 根据分数推荐速度档位（调整阈值以适应新的评分系统）
+    // 7. 确定性能档位
     let recommendedSpeed;
     let recommendation;
 
-    if (score <= 3) {
+    if (score <= 4) {
         recommendedSpeed = 'slow';
-        recommendation = '推荐: 低速档位（低配设备）';
-    } else if (score <= 5) {
+        recommendation = `推荐: ${PERFORMANCE_TIERS.slow.label} - ${PERFORMANCE_TIERS.slow.description}`;
+    } else if (score <= 6.5) {
         recommendedSpeed = 'medium';
-        recommendation = '推荐: 中速档位（普通设备）';
-    } else if (score <= 7) {
+        recommendation = `推荐: ${PERFORMANCE_TIERS.medium.label} - ${PERFORMANCE_TIERS.medium.description}`;
+    } else if (score <= 8.5) {
         recommendedSpeed = 'fast';
-        recommendation = '推荐: 高速档位（高配设备）';
+        recommendation = `推荐: ${PERFORMANCE_TIERS.fast.label} - ${PERFORMANCE_TIERS.fast.description}`;
     } else {
-        // score > 7: 高性能设备
         recommendedSpeed = 'ultra';
-        recommendation = '推荐: 极速档位（高性能设备）';
+        recommendation = `推荐: ${PERFORMANCE_TIERS.ultra.label} - ${PERFORMANCE_TIERS.ultra.description}`;
     }
 
-    console.log('设备性能检测:', deviceInfo.join(', '), `评分: ${score.toFixed(1)}`, recommendation);
+    // 8. 生成优化配置
+    const memoryStrategy = MEMORY_STRATEGIES[memoryTier];
+    const performanceTier = PERFORMANCE_TIERS[recommendedSpeed];
 
-    return { speed: recommendedSpeed, recommendation, deviceInfo };
+    // 使用较慢的延迟以适应最慢的子系统（内存或CPU）
+    // 并限制在合理范围内：50ms (ultra) 到 1000ms (slow)
+    const rawDelay = Math.max(memoryStrategy.processingDelay, performanceTier.delay);
+    const clampedDelay = Math.max(50, Math.min(rawDelay, 1000));
+
+    const optimizedConfig = {
+        chunkSize: memoryStrategy.chunkSize,
+        maxChunksInMemory: memoryStrategy.maxChunksInMemory,
+        processingDelay: clampedDelay,
+        maxFileSize: memoryStrategy.maxFileSize,
+        tier: recommendedSpeed,
+        memoryTier: memoryTier
+    };
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔍 硬件检测结果:');
+    deviceInfo.forEach(info => console.log(`  ${info}`));
+    console.log(`  综合评分: ${score.toFixed(1)}/10`);
+    console.log(`  ${recommendation}`);
+    console.log('⚙️ 优化配置:');
+    console.log(`  分块大小: ${(optimizedConfig.chunkSize / 1024 / 1024).toFixed(0)}MB`);
+    console.log(`  处理延迟: ${optimizedConfig.processingDelay}ms`);
+    console.log(`  最大文件: ${(optimizedConfig.maxFileSize / 1024 / 1024 / 1024).toFixed(1)}GB`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    return {
+        speed: recommendedSpeed,
+        recommendation,
+        deviceInfo,
+        hardwareConfig: optimizedConfig,
+        chipName: chipName || '未识别',
+        gpuName: gpu.name || '未识别',
+        memoryTier: memoryTier,
+        score: score
+    };
+}
+
+/**
+ * 获取当前优化配置（带缓存）
+ */
+function getOptimizedConfig() {
+    if (!hardwareConfig) {
+        const detection = detectDevicePerformance();
+        hardwareConfig = detection.hardwareConfig;
+    }
+    return hardwareConfig;
+}
+
+// ==================== 错误处理和性能监控 ====================
+
+/**
+ * 性能监控器
+ */
+class PerformanceMonitor {
+    constructor() {
+        this.startTime = null;
+        this.lastCheckpoint = null;
+        this.checkpoints = [];
+        this.memoryWarnings = 0;
+        this.degraded = false;
+    }
+
+    start() {
+        this.startTime = performance.now();
+        this.lastCheckpoint = this.startTime;
+        this.checkpoints = [];
+        this.memoryWarnings = 0;
+        this.degraded = false;
+    }
+
+    checkpoint(name) {
+        const now = performance.now();
+        const elapsed = now - this.lastCheckpoint;
+        this.checkpoints.push({
+            name,
+            elapsed,
+            timestamp: now
+        });
+        this.lastCheckpoint = now;
+        return elapsed;
+    }
+
+    checkMemory() {
+        // 检查内存使用情况
+        if (performance.memory) {
+            const used = performance.memory.usedJSHeapSize;
+            const limit = performance.memory.jsHeapSizeLimit;
+            const usage = used / limit;
+
+            if (usage > 0.9) {
+                this.memoryWarnings++;
+                console.warn(`⚠️ 内存使用率过高: ${(usage * 100).toFixed(1)}% (${(used/1024/1024).toFixed(0)}MB / ${(limit/1024/1024).toFixed(0)}MB)`);
+                return { warning: true, usage, used, limit };
+            }
+        }
+        return { warning: false };
+    }
+
+    getTotalTime() {
+        return performance.now() - this.startTime;
+    }
+
+    report() {
+        console.log('⏱️ 性能报告:');
+        console.log(`  总耗时: ${(this.getTotalTime() / 1000).toFixed(2)}秒`);
+        this.checkpoints.forEach(cp => {
+            console.log(`  ${cp.name}: ${cp.elapsed.toFixed(2)}ms`);
+        });
+        if (this.memoryWarnings > 0) {
+            console.log(`  内存警告次数: ${this.memoryWarnings}`);
+        }
+    }
+}
+
+/**
+ * 错误处理包装器
+ * @param {Function} fn - 要执行的函数
+ * @param {Object} options - 选项 { retries, fallback, onError }
+ */
+async function withErrorHandling(fn, options = {}) {
+    const {
+        retries = 0,
+        fallback = null,
+        onError = null,
+        context = 'operation'
+    } = options;
+
+    let lastError = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
+            console.error(`❌ ${context} 失败 (尝试 ${attempt + 1}/${retries + 1}):`, error);
+
+            if (onError) {
+                try {
+                    await onError(error, attempt);
+                } catch (handlerError) {
+                    console.error('错误处理器失败:', handlerError);
+                }
+            }
+
+            // 如果还有重试机会，等待一段时间
+            if (attempt < retries) {
+                const delay = Math.min(1000 * Math.pow(2, attempt), 5000); // 指数退避，最多5秒
+                console.log(`⏳ ${delay}ms 后重试...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    // 所有重试都失败了
+    if (fallback !== null) {
+        console.log(`🔄 使用降级方案...`);
+        return fallback;
+    }
+
+    // 抛出最后一个错误
+    throw new Error(`${context} 在 ${retries + 1} 次尝试后失败: ${lastError.message}`);
+}
+
+/**
+ * 内存安全检查
+ * 在处理大文件前检查是否有足够内存
+ */
+async function checkMemorySafety(fileSize) {
+    const config = getOptimizedConfig();
+
+    // 检查文件大小是否超过配置限制
+    if (fileSize > config.maxFileSize) {
+        throw new Error(
+            `文件大小 (${(fileSize/1024/1024/1024).toFixed(2)}GB) 超过当前硬件配置限制 ` +
+            `(${(config.maxFileSize/1024/1024/1024).toFixed(2)}GB)。\n` +
+            `建议：升级设备内存或选择更小的文件。`
+        );
+    }
+
+    // 检查当前内存使用情况
+    if (performance.memory) {
+        const available = performance.memory.jsHeapSizeLimit - performance.memory.usedJSHeapSize;
+        const needed = config.chunkSize * 2; // 需要至少2个块的空间
+
+        if (available < needed) {
+            console.warn(
+                `⚠️ 可用内存不足: 可用=${(available/1024/1024).toFixed(0)}MB, ` +
+                `需要=${(needed/1024/1024).toFixed(0)}MB`
+            );
+
+            // 尝试触发垃圾回收（如果可用）
+            if (window.gc) {
+                console.log('🗑️ 触发垃圾回收...');
+                window.gc();
+            }
+
+            // 再次检查
+            const availableAfterGC = performance.memory.jsHeapSizeLimit - performance.memory.usedJSHeapSize;
+            if (availableAfterGC < needed) {
+                throw new Error(
+                    `内存不足无法处理此文件。\n` +
+                    `可用内存: ${(availableAfterGC/1024/1024).toFixed(0)}MB\n` +
+                    `需要内存: ${(needed/1024/1024).toFixed(0)}MB\n` +
+                    `建议：关闭其他标签页或选择更小的文件。`
+                );
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * 自适应降级策略
+ * 当检测到性能问题时自动降低处理强度
+ * @param {Object} baseConfig - 基础配置
+ * @param {PerformanceMonitor} monitor - 性能监控器
+ * @returns {Object} 调整后的配置（如果需要降级）或原配置
+ */
+function createAdaptiveConfig(baseConfig, monitor) {
+    if (!monitor.degraded && monitor.memoryWarnings > 2) {
+        const adaptedConfig = {
+            ...baseConfig,
+            chunkSize: Math.floor(baseConfig.chunkSize / 2),
+            processingDelay: baseConfig.processingDelay * 2,
+            maxChunksInMemory: 1
+        };
+
+        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.warn('⚠️ 自适应降级已启用');
+        console.warn(`  内存警告次数: ${monitor.memoryWarnings}`);
+        console.warn(`  块大小: ${(baseConfig.chunkSize/1024/1024).toFixed(0)}MB → ${(adaptedConfig.chunkSize/1024/1024).toFixed(0)}MB`);
+        console.warn(`  处理延迟: ${baseConfig.processingDelay}ms → ${adaptedConfig.processingDelay}ms`);
+        console.warn(`  内存中块数: ${baseConfig.maxChunksInMemory} → ${adaptedConfig.maxChunksInMemory}`);
+        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        monitor.degraded = true;
+        return adaptedConfig;
+    }
+
+    return baseConfig;
+}
+
+// ==================== UI硬件信息显示 ====================
+
+/**
+ * 初始化硬件信息显示
+ */
+function initHardwareInfoDisplay(performanceInfo) {
+    const hardwareInfoDiv = document.getElementById('hardwareInfo');
+    const hardwareDetails = document.getElementById('hardwareDetails');
+    const toggleButton = document.getElementById('toggleHardwareInfo');
+
+    if (!hardwareInfoDiv || !hardwareDetails || !toggleButton) {
+        return;
+    }
+
+    // 生成硬件信息HTML
+    const config = performanceInfo.hardwareConfig;
+    const infoHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+            ${performanceInfo.deviceInfo.map(info => `
+                <div style="padding: 4px 8px; background: white; border-radius: 4px;">
+                    ${info}
+                </div>
+            `).join('')}
+        </div>
+        <div style="margin-top: 10px; padding: 8px; background: white; border-radius: 4px;">
+            <div><strong>芯片:</strong> ${performanceInfo.chipName}</div>
+            ${performanceInfo.gpuName !== '未识别' ? `<div><strong>GPU:</strong> ${performanceInfo.gpuName}</div>` : ''}
+            <div><strong>综合评分:</strong> ${performanceInfo.score.toFixed(1)}/10</div>
+        </div>
+        <div style="margin-top: 10px; padding: 8px; background: var(--success-bg); border-radius: 4px;">
+            <div style="margin-bottom: 4px;"><strong>⚙️ 自动优化配置:</strong></div>
+            <div>• 分块大小: ${(config.chunkSize / 1024 / 1024).toFixed(0)}MB</div>
+            <div>• 处理延迟: ${config.processingDelay}ms</div>
+            <div>• 最大文件: ${(config.maxFileSize / 1024 / 1024 / 1024).toFixed(1)}GB</div>
+            <div>• 性能档位: ${config.tier.toUpperCase()}</div>
+            <div>• 内存模式: ${MEMORY_STRATEGIES[config.memoryTier].label}</div>
+        </div>
+    `;
+
+    hardwareDetails.innerHTML = infoHTML;
+
+    // 切换显示/隐藏
+    toggleButton.addEventListener('click', (e) => {
+        e.preventDefault();
+
+        // 使用计算后的样式来正确判断当前状态
+        const computedDisplay = window.getComputedStyle(hardwareInfoDiv).display;
+        const isHidden = computedDisplay === 'none';
+
+        if (isHidden) {
+            hardwareInfoDiv.style.display = 'block';
+            toggleButton.textContent = '隐藏硬件信息';
+        } else {
+            hardwareInfoDiv.style.display = 'none';
+            toggleButton.textContent = '显示硬件信息';
+        }
+    });
 }
 
 /**
  * 根据速度档位获取处理延迟时间（毫秒）
+ * 如果speed为'auto'或未指定，则使用硬件自动检测结果
  */
 function getProcessingDelay(speed) {
+    // 如果是自动模式，使用优化配置
+    if (speed === 'auto' || !speed) {
+        const config = getOptimizedConfig();
+        return config.processingDelay;
+    }
+
+    // 使用PERFORMANCE_TIERS配置
+    if (PERFORMANCE_TIERS[speed]) {
+        return PERFORMANCE_TIERS[speed].delay;
+    }
+
+    // 兼容旧版本的手动配置
     switch (speed) {
         case 'slow':
-            return 1000; // 1秒延迟，减少内存压力
+            return 1000;
         case 'medium':
-            return 500;  // 0.5秒延迟
+            return 500;
         case 'fast':
-            return 200;  // 0.2秒延迟
+            return 200;
         case 'ultra':
-            return 50;   // 0.05秒延迟，几乎无延迟
+            return 50;
         default:
             return 500;
     }
@@ -3337,6 +3986,9 @@ if (typeof document !== 'undefined') {
             }
             console.log('已自动设置推荐速度档位:', performanceInfo.speed);
         }
+
+        // 初始化硬件信息显示
+        initHardwareInfoDisplay(performanceInfo);
     }
 }
 
