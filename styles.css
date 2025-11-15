@@ -689,53 +689,50 @@ body {
 
 /* 密码输入包装器 */
 .password-input-wrapper {
-    padding: 20px;
-    border: 2px solid var(--black);
-    border-radius: 2px;
-    background-color: var(--white);
+    padding: 0;
+    border: none;
+    background-color: transparent;
     margin-top: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .password-input-title {
     font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-    font-size: 15px;
-    font-weight: 700;
-    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
     color: var(--black);
+    letter-spacing: -0.2px;
 }
 
 .password-input-desc {
     font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--gray-500);
-    line-height: 1.5;
-    margin-bottom: 16px;
-    padding: 12px;
-    background-color: var(--gray-100);
-    border-left: 3px solid var(--black);
+    line-height: 1.4;
+    margin-bottom: 12px;
 }
 
 .password-input {
     width: 100%;
-    padding: 12px;
-    border: 2px solid var(--gray-400);
-    border-radius: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
     font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-    font-size: 14px;
-    margin-bottom: 12px;
-    transition: var(--transition);
+    font-size: 13px;
+    margin-bottom: 10px;
+    transition: all 0.2s ease;
     background-color: var(--white);
 }
 
 .password-input:focus {
     outline: none;
-    border-color: var(--black);
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+    border-color: var(--gray-500);
+    box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.05);
 }
 
 .password-input::placeholder {
     color: var(--gray-400);
+    font-size: 12px;
 }
 
 /* 恢复模式区域 */
@@ -782,15 +779,13 @@ body {
 
 /* 密码强度指示器 */
 .password-strength {
-    padding: 10px 12px;
-    background-color: var(--gray-100);
-    border-radius: 2px;
-    font-weight: 600;
+    padding: 8px 0;
+    background-color: transparent;
+    font-weight: 500;
     font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-    font-size: 12px;
-    margin-top: 4px;
-    border: 1px solid var(--gray-300);
-    transition: var(--transition);
+    font-size: 11px;
+    color: var(--gray-500);
+    transition: all 0.2s ease;
 }
 
 /* 响应式设计 */
