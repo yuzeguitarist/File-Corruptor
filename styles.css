@@ -129,6 +129,7 @@ body {
     height: 100%;
     opacity: 0;
     cursor: pointer;
+    pointer-events: none; /* 防止意外点击，通过父元素的点击事件来触发 */
 }
 
 /* ==================== 文件信息 ==================== */
@@ -688,11 +689,50 @@ body {
 
 /* 密码输入包装器 */
 .password-input-wrapper {
-    padding: 16px;
-    border: 2px solid var(--gray-400);
-    border-radius: 4px;
-    background-color: var(--gray-100);
-    margin-top: 12px;
+    padding: 0;
+    border: none;
+    background-color: transparent;
+    margin-top: 16px;
+}
+
+.password-input-title {
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--black);
+    letter-spacing: -0.2px;
+}
+
+.password-input-desc {
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--gray-500);
+    line-height: 1.4;
+    margin-bottom: 12px;
+}
+
+.password-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    margin-bottom: 10px;
+    transition: all 0.2s ease;
+    background-color: var(--white);
+}
+
+.password-input:focus {
+    outline: none;
+    border-color: var(--gray-500);
+    box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.05);
+}
+
+.password-input::placeholder {
+    color: var(--gray-400);
+    font-size: 12px;
 }
 
 /* 恢复模式区域 */
@@ -739,10 +779,13 @@ body {
 
 /* 密码强度指示器 */
 .password-strength {
-    padding: 8px;
-    background-color: var(--gray-200);
-    border-radius: 4px;
-    font-weight: 600;
+    padding: 8px 0;
+    background-color: transparent;
+    font-weight: 500;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--gray-500);
+    transition: all 0.2s ease;
 }
 
 /* 响应式设计 */

@@ -291,16 +291,16 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
 // 注意：即使使用Blob，所有块在合并前仍在内存中
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
-// 可逆模式的文件大小限制：256MB（保守值，确保内存安全）
+// 可逆模式的文件大小限制：60MB（保守值，确保内存安全）
 //
 // 限制原因：
 // 1. 嵌入可逆数据需要将整个文件转换为Uint8Array（embedReversibleData要求）
-// 2. 在内存受限设备上，接近500MB会导致内存爆炸
-// 3. 保守的256MB限制确保：原文件(256MB) + 破坏后(256MB) + diff数据(~50MB) ≈ 562MB
+// 2. 在内存受限设备上需要同时保持原文件、破坏后文件和diff数据
+// 3. 保守的60MB限制确保：原文件(60MB) + 破坏后(60MB) + diff数据(~15MB) ≈ 135MB
 //    在大多数现代设备上可安全处理
 //
 // 注意：超过此大小的文件仍可使用非可逆模式进行破坏（最大2GB）
-const MAX_REVERSIBLE_FILE_SIZE = 256 * 1024 * 1024; // 256MB
+const MAX_REVERSIBLE_FILE_SIZE = 60 * 1024 * 1024; // 60MB
 
 // 分块处理配置
 const CHUNK_PROCESSING_CONFIG = {
@@ -637,7 +637,7 @@ function updateReversibleModeAvailability() {
                     descDiv.appendChild(hintDiv);
                 }
             }
-            hintDiv.textContent = `不可用：文件 "${maxFileName}" (${formatFileSize(maxFileSize)}) 超过256MB限制。可逆模式仅支持256MB以内的文件（为确保内存安全）。`;
+            hintDiv.textContent = `不可用：文件 "${maxFileName}" (${formatFileSize(maxFileSize)}) 超过60MB限制。可逆模式仅支持60MB以内的文件（为确保内存安全）。`;
         }
     } else {
         // 启用可逆模式
@@ -990,6 +990,7 @@ if (typeof document !== 'undefined') {
             if (restoreUploadArea.style.display === 'none') {
                 return;
             }
+
             // 如果点击的不是文件输入框本身，触发文件选择
             if (e.target !== restoreFileInput) {
                 e.preventDefault();
