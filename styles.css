@@ -129,7 +129,14 @@ body {
     height: 100%;
     opacity: 0;
     cursor: pointer;
-    pointer-events: none; /* 防止意外点击，通过父元素的点击事件来触发 */
+    /* 允许键盘访问，保持可聚焦性 */
+}
+
+/* 当文件输入获得焦点时，给父元素添加焦点样式 */
+.file-input:focus + .upload-area,
+.upload-area:has(.file-input:focus) {
+    outline: 3px solid var(--black);
+    outline-offset: 2px;
 }
 
 /* ==================== 文件信息 ==================== */
@@ -527,6 +534,139 @@ body {
     letter-spacing: 0.5px;
 }
 
+/* ==================== Toast 通知样式 ==================== */
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    max-width: 90vw;
+    pointer-events: none;
+}
+
+.toast {
+    background: var(--white);
+    border: 2px solid var(--black);
+    padding: 16px 20px;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 300px;
+    max-width: 500px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    pointer-events: all;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast-show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.toast-message {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--black);
+}
+
+.toast-action {
+    background: none;
+    border: 1px solid var(--black);
+    padding: 4px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.toast-action:hover {
+    background: var(--black);
+    color: var(--white);
+}
+
+/* Toast 类型样式 */
+.toast-error {
+    background: #fee;
+    border-color: #c00;
+}
+
+.toast-error .toast-message {
+    color: #c00;
+}
+
+.toast-error .toast-action {
+    border-color: #c00;
+    color: #c00;
+}
+
+.toast-error .toast-action:hover {
+    background: #c00;
+    color: var(--white);
+}
+
+.toast-success {
+    background: #efe;
+    border-color: #080;
+}
+
+.toast-success .toast-message {
+    color: #080;
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+    .toast-container {
+        bottom: 10px;
+        left: 10px;
+        right: 10px;
+        transform: none;
+    }
+    
+    .toast {
+        min-width: auto;
+        max-width: 100%;
+    }
+}
+
+/* ==================== 可访问性样式 ==================== */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* 焦点样式增强 */
+.btn:focus,
+.mode-tab:focus,
+input[type="radio"]:focus + .level-card,
+input[type="checkbox"]:focus {
+    outline: 3px solid var(--black);
+    outline-offset: 2px;
+}
+
+/* 高对比度模式支持 */
+@media (prefers-contrast: high) {
+    .upload-area {
+        border-width: 3px;
+    }
+    
+    .btn {
+        border-width: 3px;
+    }
+}
+
 /* ==================== 响应式设计 ==================== */
 @media (max-width: 640px) {
     .container {
@@ -558,6 +698,76 @@ body {
         max-width: 100%;
         text-align: left;
     }
+}
+
+/* ==================== 进度条样式 ==================== */
+.progress-container {
+    margin-top: 20px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--gray-300);
+    border: 1px solid var(--black);
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--black);
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+/* 进度条动画条纹 */
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.2) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.2) 50%,
+        rgba(255, 255, 255, 0.2) 75%,
+        transparent 75%,
+        transparent
+    );
+    background-size: 20px 20px;
+    animation: progress-stripes 1s linear infinite;
+}
+
+@keyframes progress-stripes {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: 20px 0;
+    }
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--gray-700);
+}
+
+.progress-percent {
+    font-weight: 600;
+}
+
+.progress-time {
+    color: var(--gray-600);
 }
 
 /* ==================== 动画效果 ==================== */

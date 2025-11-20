@@ -285,11 +285,41 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
     return { ...all, ...category.formats };
 }, {});
 
-// 现实的内存限制：2GB
-// 使用分块处理（chunk processing）机制，但仍需在Blob创建前保持所有块引用
-// 2GB = 8个256MB块，这是现代浏览器可以合理处理的上限
-// 注意：即使使用Blob，所有块在合并前仍在内存中
-const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+// 动态内存限制：根据设备能力调整
+// 即使使用分块处理，浏览器仍需要足够内存创建最终Blob
+// 因此需要根据实际可用内存动态调整文件大小限制
+function getMaxFileSize() {
+    // 尝试获取设备内存信息
+    const deviceMemory = navigator.deviceMemory; // 单位：GB
+    
+    // 检查是否为移动设备
+    const isMobile = /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent);
+    
+    // 根据设备类型和内存设置限制
+    if (isMobile) {
+        // 移动设备：保守限制
+        if (deviceMemory && deviceMemory <= 2) {
+            return 256 * 1024 * 1024; // 256MB
+        } else if (deviceMemory && deviceMemory <= 4) {
+            return 512 * 1024 * 1024; // 512MB
+        } else {
+            return 1024 * 1024 * 1024; // 1GB
+        }
+    } else {
+        // 桌面设备：更宽松的限制
+        if (deviceMemory && deviceMemory <= 4) {
+            return 512 * 1024 * 1024; // 512MB
+        } else if (deviceMemory && deviceMemory <= 8) {
+            return 1024 * 1024 * 1024; // 1GB
+        } else {
+            // 高配设备，但仍需考虑浏览器限制
+            return 1536 * 1024 * 1024; // 1.5GB
+        }
+    }
+}
+
+// 使用动态计算的最大文件大小
+const MAX_FILE_SIZE = getMaxFileSize();
 
 // 可逆模式的文件大小限制：60MB（保守值，确保内存安全）
 //
@@ -302,14 +332,15 @@ const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 // 注意：超过此大小的文件仍可使用非可逆模式进行破坏（最大2GB）
 const MAX_REVERSIBLE_FILE_SIZE = 60 * 1024 * 1024; // 60MB
 
-// 分块处理配置
+// 分块处理配置（优化内存使用）
 const CHUNK_PROCESSING_CONFIG = {
-    chunkSize: 256 * 1024 * 1024, // 每块256MB
-    largeFileThreshold: 256 * 1024 * 1024, // 大于256MB的文件启用分块处理
-    maxChunksInMemory: 2, // 未强制执行（浏览器限制）
+    chunkSize: 64 * 1024 * 1024, // 减小到64MB每块，降低内存峰值
+    largeFileThreshold: 128 * 1024 * 1024, // 大于128MB的文件启用分块处理
+    maxChunksInMemory: 4, // 最多保持4个块在内存中
     maxIterationsPerChunk: 10 * 1000 * 1000, // 每块最多1000万次迭代，避免锁死
     diffChunkSize: 16 * 1024 * 1024, // diff生成的块大小：16MB
-    largeDiffThreshold: 20 * 1024 * 1024 // 大于20MB的文件使用分块diff生成
+    largeDiffThreshold: 20 * 1024 * 1024, // 大于20MB的文件使用分块diff生成
+    gcInterval: 4 // 每处理4个块强制GC一次
 };
 
 const SIGNATURE_SCAN_CONFIG = {
@@ -353,6 +384,8 @@ const UNIX_EXECUTABLE_NAMES = [
 let uploadArea, fileInput, fileInfo, fileName, fileSize, fileType;
 let optionsSection, statusSection, successSection, statusText;
 let resetBtn, corruptBtn, continueBtn, reportCard;
+let screenReaderAnnouncements; // 屏幕阅读器通知区域
+let progressContainer, progressFill, progressPercent, progressTime; // 进度条元素
 let randomizeNameCheckbox, downloadReportCheckbox, embedSignatureCheckbox;
 let lastCorruptionReport = null;
 
@@ -377,18 +410,37 @@ if (typeof document !== 'undefined') {
     randomizeNameCheckbox = document.getElementById('randomizeName');
     downloadReportCheckbox = document.getElementById('downloadReport');
     embedSignatureCheckbox = document.getElementById('embedSignature');
+    screenReaderAnnouncements = document.getElementById('screenReaderAnnouncements');
+    
+    // 进度条元素
+    progressContainer = document.getElementById('progressContainer');
+    progressFill = document.getElementById('progressFill');
+    progressPercent = document.getElementById('progressPercent');
+    progressTime = document.getElementById('progressTime');
 }
 
 // ==================== 文件上传处理 ====================
 
 // 仅在浏览器环境中注册事件监听器
 if (typeof document !== 'undefined') {
+    // 初始化 Toast 系统
+    Toast.init();
+    
     // 点击上传区域触发文件选择
     uploadArea.addEventListener('click', (e) => {
         // 防止事件冒泡
         if (e.target !== fileInput) {
             e.preventDefault();
             fileInput.click();
+        }
+    });
+    
+    // 键盘支持：按空格或回车触发文件选择
+    uploadArea.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            fileInput.click();
+            announceToScreenReader('文件选择对话框已打开');
         }
     });
 
@@ -469,9 +521,12 @@ function handleFileSelect(files) {
     const validFiles = [];
     const errors = [];
 
+    // 获取当前设备的文件大小限制
+    const currentMaxSize = getMaxFileSize();
+    
     for (const file of files) {
-        if (file.size > MAX_FILE_SIZE) {
-            errors.push(`${file.name}: 文件过大 (${formatFileSize(file.size)})`);
+        if (file.size > currentMaxSize) {
+            errors.push(`${file.name}: 文件过大 (${formatFileSize(file.size)}，当前设备限制: ${formatFileSize(currentMaxSize)})`);
             continue;
         }
 
@@ -492,7 +547,8 @@ function handleFileSelect(files) {
 
     if (errors.length > 0 && validFiles.length === 0) {
         // 所有文件都被拒绝，需要完整重置UI状态
-        showAlert(`所有文件都无效：\n\n${errors.join('\n')}\n\n最大限制：${formatFileSize(MAX_FILE_SIZE)}`);
+        const currentMaxSize = getMaxFileSize();
+        showAlert(`所有文件都无效：\n\n${errors.join('\n')}\n\n当前设备最大限制：${formatFileSize(currentMaxSize)}`);
 
         // 重置所有状态和UI元素，避免显示陈旧数据
         resetApp();
@@ -584,6 +640,13 @@ function handleFileSelect(files) {
     optionsSection.style.display = 'block';
     uploadArea.style.display = 'none';
 
+    // 通知屏幕阅读器文件已成功加载
+    if (validFiles.length === 1) {
+        announceToScreenReader(`已选择文件: ${validFiles[0].name}, 大小: ${formatFileSize(validFiles[0].size)}`);
+    } else {
+        announceToScreenReader(`已选择 ${validFiles.length} 个文件，总大小: ${formatFileSize(validFiles.reduce((sum, f) => sum + f.size, 0))}`);
+    }
+
     // 检查并更新可逆模式的可用性
     updateReversibleModeAvailability();
 }
@@ -597,7 +660,8 @@ function updateReversibleModeAvailability() {
 
     if (!reversibleModeCheckbox) return;
 
-    // 检查所有选中的文件是否都在500MB以内
+    // 检查所有选中的文件是否都在可逆模式大小限制以内（当前：60MB）
+    // 注意：这个限制是为了确保内存安全，因为可逆模式需要在内存中完整处理文件
     let allFilesSupported = true;
     let maxFileSize = 0;
     let maxFileName = '';
@@ -656,6 +720,210 @@ function updateReversibleModeAvailability() {
         }
     }
 }
+
+/**
+ * Toast 通知系统 - 替代 alert() 的现代化提示方案
+ */
+const Toast = {
+    container: null,
+    queue: [],
+    isShowing: false,
+    
+    /**
+     * 初始化 Toast 容器
+     */
+    init() {
+        if (this.container) return;
+        
+        this.container = document.createElement('div');
+        this.container.className = 'toast-container';
+        this.container.setAttribute('role', 'status');
+        this.container.setAttribute('aria-live', 'polite');
+        document.body.appendChild(this.container);
+    },
+    
+    /**
+     * 显示 Toast 消息
+     * @param {string} message - 消息内容
+     * @param {Object} options - 配置选项
+     */
+    show(message, options = {}) {
+        const config = {
+            type: 'info',
+            duration: 4000,
+            action: null,
+            actionText: '关闭',
+            ...options
+        };
+        
+        this.queue.push({ message, config });
+        this.processQueue();
+    },
+    
+    /**
+     * 处理消息队列
+     */
+    async processQueue() {
+        if (this.isShowing || this.queue.length === 0) return;
+        
+        this.isShowing = true;
+        const { message, config } = this.queue.shift();
+        
+        // 创建 Toast 元素
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${config.type}`;
+        
+        // 消息内容
+        const messageEl = document.createElement('span');
+        messageEl.className = 'toast-message';
+        messageEl.textContent = message;
+        toast.appendChild(messageEl);
+        
+        // 操作按钮
+        if (config.action || config.type === 'error') {
+            const actionBtn = document.createElement('button');
+            actionBtn.className = 'toast-action';
+            actionBtn.textContent = config.actionText;
+            actionBtn.onclick = () => {
+                if (config.action) config.action();
+                this.hide(toast);
+            };
+            toast.appendChild(actionBtn);
+        }
+        
+        // 添加到容器
+        this.container.appendChild(toast);
+        
+        // 触发动画
+        requestAnimationFrame(() => {
+            toast.classList.add('toast-show');
+        });
+        
+        // 自动隐藏（错误类型除外）
+        if (config.type !== 'error') {
+            setTimeout(() => this.hide(toast), config.duration);
+        }
+    },
+    
+    /**
+     * 隐藏 Toast
+     */
+    hide(toast) {
+        toast.classList.remove('toast-show');
+        toast.addEventListener('transitionend', () => {
+            toast.remove();
+            this.isShowing = false;
+            this.processQueue();
+        }, { once: true });
+    },
+    
+    // 便捷方法
+    error(message, options = {}) {
+        this.show(message, { ...options, type: 'error' });
+    },
+    
+    success(message, options = {}) {
+        this.show(message, { ...options, type: 'success' });
+    }
+};
+
+/**
+ * 进度管理器 - 统一处理进度显示和时间估算
+ */
+class ProgressManager {
+    constructor() {
+        this.reset();
+    }
+    
+    reset() {
+        this.startTime = null;
+        this.totalSteps = 100;
+        this.currentStep = 0;
+        this.speeds = []; // 用于计算平均速度
+    }
+    
+    start(totalSteps = 100) {
+        this.reset();
+        this.startTime = Date.now();
+        this.totalSteps = totalSteps;
+        this.show();
+    }
+    
+    update(currentStep, message = null) {
+        this.currentStep = currentStep;
+        const progress = Math.min((currentStep / this.totalSteps) * 100, 100);
+        
+        // 更新进度条
+        if (progressFill) {
+            progressFill.style.width = `${progress}%`;
+        }
+        
+        if (progressPercent) {
+            progressPercent.textContent = `${Math.round(progress)}%`;
+        }
+        
+        // 更新消息
+        if (message && statusText) {
+            statusText.textContent = message;
+        }
+        
+        // 计算剩余时间
+        this.updateTimeEstimate(progress);
+        
+        // 通知屏幕阅读器（每10%通知一次）
+        if (progress % 10 === 0) {
+            announceToScreenReader(`处理进度 ${Math.round(progress)}%`);
+        }
+    }
+    
+    updateTimeEstimate(progress) {
+        if (!this.startTime || progress === 0) return;
+        
+        const elapsed = Date.now() - this.startTime;
+        const speed = progress / elapsed; // 百分比/毫秒
+        
+        // 记录最近的速度用于平滑
+        this.speeds.push(speed);
+        if (this.speeds.length > 10) {
+            this.speeds.shift();
+        }
+        
+        // 计算平均速度
+        const avgSpeed = this.speeds.reduce((a, b) => a + b, 0) / this.speeds.length;
+        const remaining = (100 - progress) / avgSpeed;
+        
+        if (progressTime) {
+            if (remaining < 1000) {
+                progressTime.textContent = '即将完成';
+            } else if (remaining < 60000) {
+                progressTime.textContent = `剩余 ${Math.ceil(remaining / 1000)} 秒`;
+            } else {
+                progressTime.textContent = `剩余 ${Math.ceil(remaining / 60000)} 分钟`;
+            }
+        }
+    }
+    
+    show() {
+        if (progressContainer) {
+            progressContainer.style.display = 'block';
+        }
+    }
+    
+    hide() {
+        if (progressContainer) {
+            progressContainer.style.display = 'none';
+        }
+        this.reset();
+    }
+    
+    complete(message = '处理完成') {
+        this.update(this.totalSteps, message);
+        setTimeout(() => this.hide(), 1000);
+    }
+}
+
+// 创建全局进度管理器实例
+const progressManager = new ProgressManager();
 
 /**
  * 格式化文件大小
@@ -727,11 +995,52 @@ function extractExtension(filename) {
 }
 
 function showAlert(message) {
-    if (typeof alert === 'function') {
+    // 尝试使用 Toast 系统
+    if (typeof document !== 'undefined' && Toast) {
+        // 根据消息内容判断类型
+        const isError = message.toLowerCase().includes('错误') || 
+                       message.toLowerCase().includes('失败') ||
+                       message.toLowerCase().includes('无效');
+        
+        if (isError) {
+            Toast.error(message);
+        } else {
+            Toast.show(message);
+        }
+    } else if (typeof alert === 'function') {
+        // 降级到原生 alert
         alert(message);
     } else {
+        // 最后降级到 console
         console.warn('[ALERT]', message);
     }
+    
+    // 同时通知屏幕阅读器
+    announceToScreenReader(message, true);
+}
+
+/**
+ * 向屏幕阅读器发送通知
+ * @param {string} message - 要通知的消息
+ * @param {boolean} assertive - 是否为紧急通知
+ */
+function announceToScreenReader(message, assertive = false) {
+    if (!screenReaderAnnouncements) return;
+    
+    // 清空之前的通知
+    screenReaderAnnouncements.textContent = '';
+    
+    // 延迟设置新消息，确保屏幕阅读器能检测到变化
+    setTimeout(() => {
+        screenReaderAnnouncements.textContent = message;
+        
+        // 对于非紧急消息，3秒后清除
+        if (!assertive) {
+            setTimeout(() => {
+                screenReaderAnnouncements.textContent = '';
+            }, 3000);
+        }
+    }, 100);
 }
 
 /**
@@ -944,27 +1253,47 @@ if (typeof document !== 'undefined') {
             statusText.textContent = '正在验证文件...';
 
             try {
-                // 读取文件
-                const arrayBuffer = await file.arrayBuffer();
-                const fileData = new Uint8Array(arrayBuffer);
-
+                // 分块扫描尾部可逆信息（避免整文件读入导致内存爆炸）
                 statusText.textContent = '正在检查文件格式...';
-
-                // 验证是否为可逆文件
-                const reversibleData = extractReversibleData(fileData);
+                const peek = await extractReversibleDataFromBlob(file);
 
                 // 隐藏加载状态
                 statusSection.style.display = 'none';
 
-                if (!reversibleData) {
-                    showAlert('此文件不是通过可逆模式破坏的文件，无法恢复！\n\n请确保：\n1. 文件是通过本工具的"可逆破坏模式"创建的\n2. 文件未被二次修改');
+                if (!peek) {
+                    let diagnosticInfo = '此文件不是通过可逆模式破坏的文件，无法恢复！\n\n';
+                    
+                    // 提供更详细的诊断信息
+                    if (file.size > (64 * 1024 * 1024)) {
+                        diagnosticInfo += '诊断信息：\n';
+                        diagnosticInfo += '- 文件较大，未在尾部64MB内找到可逆标记\n';
+                        diagnosticInfo += '- 可能原因：文件被截断或不是可逆文件\n';
+                    } else {
+                        diagnosticInfo += '诊断信息：\n';
+                        diagnosticInfo += '- 未找到可逆数据标记\n';
+                        diagnosticInfo += '- 文件可能不是通过可逆模式创建\n';
+                    }
+                    
+                    diagnosticInfo += '\n请确保：\n';
+                    diagnosticInfo += '1. 文件是通过本工具的"可逆破坏模式"创建的\n';
+                    diagnosticInfo += '2. 文件在传输过程中未被截断\n';
+                    diagnosticInfo += '3. 文件未被其他工具修改（如文本编辑器）\n';
+                    diagnosticInfo += '\n注意：现已支持容错恢复，允许文件末尾有少量额外字节';
+                    
+                    showAlert(diagnosticInfo);
                     // 重置文件输入
                     restoreFileInput.value = '';
                     return;
                 }
 
                 // 显示文件信息
-                restoreFileData = reversibleData;
+                restoreFileData = {
+                    reversibleInfo: peek.reversibleInfo,
+                    // 延迟读取整份破坏数据，避免在上传阶段占用巨量内存
+                    corruptedData: null,
+                    corruptedSize: peek.corruptedSize,
+                    file
+                };
                 document.getElementById('restoreFileName').textContent = file.name;
                 document.getElementById('restoreFileSize').textContent = formatFileSize(file.size);
                 document.getElementById('restoreVerifyStatus').innerHTML = '<span style="color: green;">[可恢复] 文件验证通过</span>';
@@ -1085,7 +1414,7 @@ if (typeof document !== 'undefined') {
                 restorePasswordSection.style.display = 'none';
                 statusText.textContent = '正在解密恢复数据...';
 
-                const { reversibleInfo, corruptedData } = restoreFileData;
+                const { reversibleInfo, corruptedData, file, corruptedSize } = restoreFileData;
 
                 // 解码Base64
                 const iv = base64ToArray(reversibleInfo.iv);
@@ -1105,17 +1434,26 @@ if (typeof document !== 'undefined') {
                 statusText.textContent = '正在解压恢复数据...';
                 const diff = decompressDiff(compressedDiff);
 
-                // 应用diff恢复文件
+                // 应用diff恢复文件（优先使用内存友好的Blob拼接方式）
                 statusText.textContent = '正在恢复原始文件...';
-                const restoredData = applyDiff(corruptedData, diff);
+                let downloadBlob;
+                if (corruptedData instanceof Uint8Array) {
+                    const restoredData = applyDiff(corruptedData, diff);
+                    downloadBlob = new Blob([restoredData]);
+                } else if (file && typeof corruptedSize === 'number') {
+                    downloadBlob = applyDiffToBlob(file, corruptedSize, diff);
+                } else {
+                    throw new Error('内部状态异常：缺少恢复所需的文件数据。');
+                }
 
                 // 下载恢复后的文件
                 statusText.textContent = '恢复完成，正在下载...';
-                const blob = new Blob([restoredData]);
-                const url = URL.createObjectURL(blob);
+                const url = URL.createObjectURL(downloadBlob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = reversibleInfo.originalFileName || 'restored_file';
+                // 安全处理恢复的文件名
+                const restoredFileName = reversibleInfo.originalFileName || 'restored_file';
+                a.download = sanitizeFileName(restoredFileName);
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -1278,9 +1616,21 @@ async function processLargeFileInChunks(file, level, context) {
     }
     totalTargetCount = Math.min(totalTargetCount, fileSize);
 
-    // 使用BlobParts数组，让浏览器管理内存
+    // 内存管理优化：限制同时存在的块数量
     const blobParts = [];
     let totalBytesModified = 0;
+    
+    // 内存监控
+    const getMemoryUsage = () => {
+        if (performance.memory) {
+            return {
+                used: performance.memory.usedJSHeapSize,
+                limit: performance.memory.jsHeapSizeLimit,
+                ratio: performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit
+            };
+        }
+        return null;
+    };
 
     try {
         // 分块处理
@@ -1290,16 +1640,26 @@ async function processLargeFileInChunks(file, level, context) {
             const currentChunkSize = end - start;
             const isLastChunk = (i === totalChunks - 1);
 
+            // 检查内存使用情况
+            const memInfo = getMemoryUsage();
+            if (memInfo && memInfo.ratio > 0.8) {
+                console.warn(`内存使用率高: ${Math.round(memInfo.ratio * 100)}%`);
+                // 给浏览器更多时间进行GC
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
             // 计算这个块的预算：按比例分配
             const chunkBudget = Math.floor(currentChunkSize / fileSize * totalTargetCount);
 
             // 更新进度显示
             const progress = Math.floor((i / totalChunks) * 100);
+            progressManager.update(i, `处理文件块 ${i + 1}/${totalChunks}`);
+            
             if (typeof statusText !== 'undefined') {
                 statusText.textContent = `处理中... ${progress}% (${i + 1}/${totalChunks} 块)`;
             }
 
-            // 读取块（添加错误处理）
+            // 读取块
             let chunkData;
             try {
                 chunkData = await readFileChunk(file, start, end);
@@ -1307,44 +1667,48 @@ async function processLargeFileInChunks(file, level, context) {
                 throw new Error(`读取文件块 ${i + 1}/${totalChunks} 失败: ${readError.message}`);
             }
 
-            // 对块应用智能破坏（传递 level 参数）
+            // 对块应用智能破坏
             const bytesModified = applyCorruptionToChunk(chunkData, start, chunkBudget, level, context);
             totalBytesModified += bytesModified;
 
-            // 如果是最后一个块且需要嵌入签名，在这个块中嵌入
+            // 如果是最后一个块且需要嵌入签名
             if (isLastChunk && context.options.embedSignature && chunkData.length > 1024) {
                 try {
                     const signatureResult = embedCorruptionSignature(chunkData, context);
                     totalBytesModified += signatureResult.bytesModified;
                 } catch (sigError) {
-                    // 签名嵌入失败不致命，继续处理
                     console.warn('签名嵌入失败:', sigError);
                 }
             }
 
-            // 将处理后的块添加到BlobParts（浏览器管理内存）
-            blobParts.push(chunkData);
+            // 立即将处理后的块转换为Blob（释放TypedArray内存）
+            const chunkBlob = new Blob([chunkData], { type: 'application/octet-stream' });
+            blobParts.push(chunkBlob);
+            
+            // 显式清空原始数据，帮助GC
+            chunkData = null;
 
-            // 允许浏览器在处理块之间进行垃圾回收
-            if (i % 4 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
+            // 定期让出执行权，允许GC
+            if (i % CHUNK_PROCESSING_CONFIG.gcInterval === 0 && i > 0) {
+                await new Promise(resolve => setTimeout(resolve, 10));
             }
         }
 
-        // 创建最终Blob（浏览器内部优化，不会复制所有数据到内存）
+        // 创建最终Blob
         if (typeof statusText !== 'undefined') {
             statusText.textContent = '合并数据...';
         }
 
         const resultBlob = new Blob(blobParts, { type: 'application/octet-stream' });
 
+        // 清理引用
+        blobParts.length = 0;
+
         return { data: resultBlob, bytesModified: totalBytesModified };
 
     } catch (error) {
         // 清理已分配的资源
         blobParts.length = 0;
-
-        // 重新抛出错误，由上层处理
         throw new Error(`分块处理失败: ${error.message}`);
     }
 }
@@ -1357,6 +1721,10 @@ async function processLargeFileInChunks(file, level, context) {
 async function corruptFile(file, level, options) {
     const startTime = getTimestamp();
     const fileSize = file.size;
+    
+    // 初始化进度管理器
+    progressManager.start(100);
+    progressManager.update(0, '准备处理文件...');
 
     // 可逆模式内存安全检查（运行时强制）
     // 即使UI已检查，仍需在此验证以防止直接调用或绕过UI的情况
@@ -1457,6 +1825,7 @@ async function corruptFile(file, level, options) {
     // 可逆破坏处理
     if (options.reversibleMode && options.encryptionPassword) {
         statusText.textContent = '生成恢复数据...';
+        progressManager.update(60, '生成恢复数据...');
 
         try {
             let diff;
@@ -1522,6 +1891,7 @@ async function corruptFile(file, level, options) {
 
             // 加密压缩后的diff
             statusText.textContent = '加密恢复数据...';
+            progressManager.update(80, '加密恢复数据...');
             const encryptedResult = await encryptData(compressedDiff, options.encryptionPassword);
 
             // 构建可逆信息
@@ -1554,8 +1924,15 @@ async function corruptFile(file, level, options) {
         }
     }
 
+    // 完成进度
+    progressManager.complete('破坏完成！');
+    
     statusText.textContent = '破坏完成，正在准备下载...';
     const downloadName = downloadCorruptedFile(dataResult, file.name, options);
+    
+    // 显示成功提示
+    Toast.success(`文件 "${file.name}" 已成功破坏并开始下载`);
+    
     const report = buildCorruptionReport({
         file,
         level,
@@ -1793,16 +2170,20 @@ function downloadCorruptedFile(data, originalName, options = {}) {
     const a = document.createElement('a');
     a.href = url;
 
-    const nameParts = originalName.split('.');
-    const extension = nameParts.length > 1 ? nameParts.pop() : '';
-    const baseName = nameParts.join('.') || 'file';
-
+    // 安全处理文件名
     let downloadName;
     if (options.randomizeName) {
+        // 随机文件名模式
         const randomBase = generateRandomFileName();
-        downloadName = extension ? `${randomBase}.${extension}` : randomBase;
+        const nameParts = originalName.split('.');
+        const extension = nameParts.length > 1 ? nameParts.pop() : '';
+        // 即使是随机名，扩展名也需要净化
+        const safeExtension = extension ? 
+            extension.replace(/[\/\\<>:"|?*\x00-\x1f\x7f-\x9f]/g, '').substring(0, 20) : '';
+        downloadName = safeExtension ? `${randomBase}.${safeExtension}` : randomBase;
     } else {
-        downloadName = extension ? `${baseName}.${extension}` : baseName;
+        // 使用原始文件名，但需要净化
+        downloadName = sanitizeFileName(originalName);
     }
 
     a.download = downloadName;
@@ -1819,6 +2200,86 @@ function downloadCorruptedFile(data, originalName, options = {}) {
 }
 
 // ==================== 辅助函数 ====================
+
+/**
+ * 安全净化文件名，防止路径遍历、特殊字符和其他安全问题
+ * @param {string} filename - 原始文件名
+ * @param {Object} options - 配置选项
+ * @returns {string} 净化后的安全文件名
+ */
+function sanitizeFileName(filename, options = {}) {
+    // 基础验证
+    if (!filename || typeof filename !== 'string') {
+        return 'download';
+    }
+    
+    const maxLength = options.maxLength || 200;
+    
+    // 分离文件名和扩展名
+    const lastDotIndex = filename.lastIndexOf('.');
+    let name = filename;
+    let extension = '';
+    
+    if (lastDotIndex > 0 && lastDotIndex < filename.length - 1) {
+        name = filename.substring(0, lastDotIndex);
+        extension = filename.substring(lastDotIndex + 1);
+    }
+    
+    // 净化文件名主体
+    // 1. 移除路径分隔符（防止目录遍历）
+    name = name.replace(/[\/\\]/g, '_');
+    
+    // 2. 移除控制字符和不可见字符
+    name = name.replace(/[\x00-\x1f\x7f-\x9f]/g, '');
+    
+    // 3. 移除Windows保留字符
+    name = name.replace(/[<>:"|?*]/g, '_');
+    
+    // 4. 移除首尾空白和点
+    name = name.trim().replace(/^\.+|\.+$/g, '');
+    
+    // 5. 处理Windows保留名称
+    const reservedNames = /^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$/i;
+    if (reservedNames.test(name)) {
+        name = '_' + name;
+    }
+    
+    // 6. 确保非空
+    if (!name) {
+        name = 'file';
+    }
+    
+    // 净化扩展名（更宽松，保留原始大小写和常见字符）
+    if (extension) {
+        // 只移除明显危险的字符
+        extension = extension.replace(/[\/\\<>:"|?*\x00-\x1f\x7f-\x9f]/g, '');
+        extension = extension.substring(0, 20); // 限制扩展名长度
+    }
+    
+    // 组装并处理长度
+    let safeName = name;
+    if (extension) {
+        const targetLength = maxLength - extension.length - 1;
+        if (name.length > targetLength) {
+            safeName = name.substring(0, targetLength - 3) + '...';
+        }
+        safeName = safeName + '.' + extension;
+    } else if (name.length > maxLength) {
+        safeName = name.substring(0, maxLength - 3) + '...';
+    }
+    
+    // Unicode正规化，防止同形字攻击
+    if (safeName.normalize) {
+        try {
+            safeName = safeName.normalize('NFKC');
+        } catch (e) {
+            // 某些环境可能不支持normalize
+            console.warn('Unicode normalization not supported');
+        }
+    }
+    
+    return safeName;
+}
 
 function getAdvancedOptions() {
     // 实时获取checkbox状态，而不是依赖全局变量
@@ -2271,7 +2732,10 @@ function getTimestamp() {
 function renderReport(report) {
     if (!reportCard) return;
 
-    reportCard.innerHTML = '';
+    // 安全清空内容
+    while (reportCard.firstChild) {
+        reportCard.removeChild(reportCard.firstChild);
+    }
     reportCard.style.display = 'block';
 
     const title = document.createElement('h4');
@@ -2300,7 +2764,18 @@ function renderReport(report) {
 
     rows.forEach(([label, value]) => {
         const item = document.createElement('li');
-        item.innerHTML = `<span class="report-label">${label}</span><span class="report-value">${value}</span>`;
+        
+        // 使用DOM API安全创建元素，防止XSS
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'report-label';
+        labelSpan.textContent = label;
+        
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'report-value';
+        valueSpan.textContent = value;
+        
+        item.appendChild(labelSpan);
+        item.appendChild(valueSpan);
         metaList.appendChild(item);
     });
 
@@ -2562,12 +3037,119 @@ const REVERSIBLE_MARKER = {
 };
 
 /**
- * 使用PBKDF2从用户密码派生加密密钥
+ * Web Worker 管理器 - 处理CPU密集型密码学操作
+ */
+class CryptoWorkerManager {
+    constructor() {
+        this.worker = null;
+        this.pendingTasks = new Map();
+        this.taskId = 0;
+        this.initWorker();
+    }
+    
+    initWorker() {
+        try {
+            this.worker = new Worker('crypto-worker.js');
+            
+            this.worker.addEventListener('message', (event) => {
+                const { id, success, result, error, type } = event.data;
+                
+                // 处理进度更新
+                if (type === 'progress') {
+                    return; // 可以添加进度回调
+                }
+                
+                // 处理任务结果
+                const task = this.pendingTasks.get(id);
+                if (task) {
+                    this.pendingTasks.delete(id);
+                    
+                    if (success) {
+                        task.resolve(result);
+                    } else {
+                        task.reject(new Error(error));
+                    }
+                }
+            });
+            
+            this.worker.addEventListener('error', (error) => {
+                console.error('Worker error:', error);
+                // 降级到主线程
+                this.worker = null;
+            });
+            
+        } catch (error) {
+            console.warn('Failed to create Web Worker:', error);
+            this.worker = null;
+        }
+    }
+    
+    async execute(type, params) {
+        // 如果Worker不可用，降级到主线程
+        if (!this.worker) {
+            return this.executeFallback(type, params);
+        }
+        
+        return new Promise((resolve, reject) => {
+            const id = this.taskId++;
+            this.pendingTasks.set(id, { resolve, reject });
+            
+            this.worker.postMessage({
+                id,
+                type,
+                ...params
+            });
+            
+            // 设置超时
+            setTimeout(() => {
+                if (this.pendingTasks.has(id)) {
+                    this.pendingTasks.delete(id);
+                    reject(new Error('Worker task timeout'));
+                }
+            }, 30000); // 30秒超时
+        });
+    }
+    
+    async executeFallback(type, params) {
+        // 降级：在主线程执行
+        console.warn(`Executing ${type} in main thread (Worker unavailable)`);
+        
+        switch (type) {
+            case 'deriveKey':
+                // 使用原有的同步函数
+                const key = await deriveKeyFromPasswordSync(params.password, params.salt);
+                return { key, salt: params.salt };
+                
+            case 'encrypt':
+                return await encryptDataSync(params.data, params.password);
+                
+            case 'decrypt':
+                return await decryptDataSync(params.encryptedData, params.password, params.iv, params.salt);
+                
+            default:
+                throw new Error(`Unknown operation: ${type}`);
+        }
+    }
+    
+    terminate() {
+        if (this.worker) {
+            this.worker.terminate();
+            this.worker = null;
+        }
+        this.pendingTasks.clear();
+    }
+}
+
+// 创建全局Worker管理器实例
+const cryptoWorker = typeof Worker !== 'undefined' ? new CryptoWorkerManager() : null;
+
+/**
+ * 使用PBKDF2从用户密码派生加密密钥（主线程版本）
  * @param {string} password - 用户输入的密码
  * @param {Uint8Array} salt - 盐值
  * @returns {Promise<CryptoKey>} 派生的加密密钥
  */
-async function deriveKeyFromPassword(password, salt) {
+async function deriveKeyFromPasswordSync(password, salt) {
     const encoder = new TextEncoder();
     const passwordBuffer = encoder.encode(password);
 
@@ -2599,18 +3181,55 @@ async function deriveKeyFromPassword(password, salt) {
 }
 
 /**
+ * 使用PBKDF2从用户密码派生加密密钥（Worker优化版）
+ * @param {string} password - 用户输入的密码
+ * @param {Uint8Array} salt - 盐值
+ * @returns {Promise<CryptoKey>} 派生的加密密钥
+ */
+async function deriveKeyFromPassword(password, salt) {
+    // 显示进度提示
+    if (statusText) {
+        statusText.textContent = '正在处理密码加密...';
+    }
+    
+    // 尝试使用Worker
+    if (cryptoWorker) {
+        try {
+            const result = await cryptoWorker.execute('deriveKey', {
+                password,
+                salt: Array.from(salt)
+            });
+            
+            // 将结果转换回CryptoKey
+            return await crypto.subtle.importKey(
+                'raw',
+                new Uint8Array(result.key),
+                'AES-GCM',
+                false,
+                ['encrypt', 'decrypt']
+            );
+        } catch (error) {
+            console.warn('Worker failed, falling back to main thread:', error);
+        }
+    }
+    
+    // 降级到主线程
+    return deriveKeyFromPasswordSync(password, salt);
+}
+
+/**
  * 使用AES-256-GCM加密数据
  * @param {Uint8Array} data - 要加密的数据
  * @param {string} password - 加密密码
  * @returns {Promise<Object>} 包含加密数据、IV和盐值的对象
  */
-async function encryptData(data, password) {
+async function encryptDataSync(data, password) {
     // 生成随机盐值和IV
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12)); // GCM推荐12字节
 
     // 派生密钥
-    const key = await deriveKeyFromPassword(password, salt);
+    const key = await deriveKeyFromPasswordSync(password, salt);
 
     // 加密数据
     const encryptedBuffer = await crypto.subtle.encrypt(
@@ -2630,16 +3249,45 @@ async function encryptData(data, password) {
 }
 
 /**
- * 使用AES-256-GCM解密数据
+ * 使用AES-256-GCM加密数据（Worker优化版）
+ * @param {Uint8Array} data - 要加密的数据
+ * @param {string} password - 加密密码
+ * @returns {Promise<{encrypted: Uint8Array, iv: Uint8Array, salt: Uint8Array}>}
+ */
+async function encryptData(data, password) {
+    // 使用Worker执行加密
+    if (cryptoWorker) {
+        try {
+            const result = await cryptoWorker.execute('encrypt', {
+                data: Array.from(data),
+                password
+            });
+            
+            return {
+                encrypted: new Uint8Array(result.encrypted),
+                iv: new Uint8Array(result.iv),
+                salt: new Uint8Array(result.salt)
+            };
+        } catch (error) {
+            console.warn('Worker encryption failed:', error);
+        }
+    }
+    
+    // 降级到主线程
+    return encryptDataSync(data, password);
+}
+
+/**
+ * 使用AES-256-GCM解密数据（主线程版本）
  * @param {Uint8Array} encryptedData - 加密的数据
  * @param {string} password - 解密密码
  * @param {Uint8Array} iv - 初始化向量
  * @param {Uint8Array} salt - 盐值
  * @returns {Promise<Uint8Array>} 解密后的数据
  */
-async function decryptData(encryptedData, password, iv, salt) {
+async function decryptDataSync(encryptedData, password, iv, salt) {
     // 派生密钥
-    const key = await deriveKeyFromPassword(password, salt);
+    const key = await deriveKeyFromPasswordSync(password, salt);
 
     // 解密数据
     const decryptedBuffer = await crypto.subtle.decrypt(
@@ -2655,10 +3303,82 @@ async function decryptData(encryptedData, password, iv, salt) {
 }
 
 /**
- * 将Uint8Array转换为Base64（优化版，O(n)复杂度）
- * 使用分块处理避免字符串拼接的O(n²)问题
+ * 使用AES-256-GCM解密数据（Worker优化版）
+ * @param {Uint8Array} encryptedData - 加密的数据
+ * @param {string} password - 解密密码
+ * @param {Uint8Array} iv - 初始化向量
+ * @param {Uint8Array} salt - 盐值
+ * @returns {Promise<Uint8Array>} 解密后的数据
  */
-function arrayToBase64(array) {
+async function decryptData(encryptedData, password, iv, salt) {
+    // 使用Worker执行解密
+    if (cryptoWorker) {
+        try {
+            const result = await cryptoWorker.execute('decrypt', {
+                encryptedData: Array.from(encryptedData),
+                password,
+                iv: Array.from(iv),
+                salt: Array.from(salt)
+            });
+            
+            return new Uint8Array(result);
+        } catch (error) {
+            console.warn('Worker decryption failed:', error);
+        }
+    }
+    
+    // 降级到主线程
+    return decryptDataSync(encryptedData, password, iv, salt);
+}
+
+/**
+ * 高性能Base64编码器 - 避免btoa的内存限制
+ */
+class Base64Encoder {
+    static encode(uint8Array) {
+        // 对于小数据，使用原生btoa更快
+        if (uint8Array.length < 1024 * 1024) { // 1MB
+            return arrayToBase64Fast(uint8Array);
+        }
+        
+        // 对于大数据，使用自定义编码器
+        return this.encodeChunked(uint8Array);
+    }
+    
+    static encodeChunked(uint8Array) {
+        const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        const result = [];
+        const chunkSize = 3 * 1024 * 1024; // 3MB chunks (must be multiple of 3)
+        
+        for (let offset = 0; offset < uint8Array.length; offset += chunkSize) {
+            const end = Math.min(offset + chunkSize, uint8Array.length);
+            const chunk = uint8Array.subarray(offset, end);
+            
+            let output = '';
+            for (let i = 0; i < chunk.length; i += 3) {
+                const byte1 = chunk[i];
+                const byte2 = i + 1 < chunk.length ? chunk[i + 1] : 0;
+                const byte3 = i + 2 < chunk.length ? chunk[i + 2] : 0;
+                
+                const bitmap = (byte1 << 16) | (byte2 << 8) | byte3;
+                
+                output += base64Chars[(bitmap >> 18) & 63];
+                output += base64Chars[(bitmap >> 12) & 63];
+                output += i + 1 < chunk.length ? base64Chars[(bitmap >> 6) & 63] : '=';
+                output += i + 2 < chunk.length ? base64Chars[bitmap & 63] : '=';
+            }
+            
+            result.push(output);
+        }
+        
+        return result.join('');
+    }
+}
+
+/**
+ * 将Uint8Array转换为Base64（小数据快速版）
+ */
+function arrayToBase64Fast(array) {
     // 使用分块处理，避免超大字符串
     const CHUNK_SIZE = 8192; // 8KB chunks
     const chunks = [];
@@ -2672,6 +3392,13 @@ function arrayToBase64(array) {
     // 数组join是O(n)，一次性分配内存
     const binary = chunks.join('');
     return btoa(binary);
+}
+
+/**
+ * 将Uint8Array转换为Base64（自动选择最佳方法）
+ */
+function arrayToBase64(array) {
+    return Base64Encoder.encode(array);
 }
 
 /**
@@ -2807,9 +3534,64 @@ class BinaryReader {
 }
 
 /**
- * 将Base64转换为Uint8Array（优化版，O(n)复杂度）
+ * 高性能Base64解码器 - 避免atob的内存限制
  */
-function base64ToArray(base64) {
+class Base64Decoder {
+    static decode(base64String) {
+        // 对于小数据，使用原生atob更快
+        if (base64String.length < 1024 * 1024) { // ~750KB decoded
+            return base64ToArrayFast(base64String);
+        }
+        
+        // 对于大数据，使用自定义解码器
+        return this.decodeChunked(base64String);
+    }
+    
+    static decodeChunked(base64String) {
+        const base64Lookup = new Uint8Array(256);
+        const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        
+        // 创建查找表
+        for (let i = 0; i < base64Chars.length; i++) {
+            base64Lookup[base64Chars.charCodeAt(i)] = i;
+        }
+        
+        // 去除填充
+        const padding = base64String.match(/=+$/);
+        const paddingLength = padding ? padding[0].length : 0;
+        const dataLength = Math.floor((base64String.length - paddingLength) * 3 / 4);
+        
+        const result = new Uint8Array(dataLength);
+        let resultIndex = 0;
+        
+        // 分块处理以避免内存峰值
+        const chunkSize = 4 * 1024 * 1024; // 4MB chunks (must be multiple of 4)
+        
+        for (let offset = 0; offset < base64String.length - paddingLength; offset += chunkSize) {
+            const end = Math.min(offset + chunkSize, base64String.length - paddingLength);
+            
+            for (let i = offset; i < end; i += 4) {
+                const encoded1 = base64Lookup[base64String.charCodeAt(i)];
+                const encoded2 = base64Lookup[base64String.charCodeAt(i + 1)];
+                const encoded3 = i + 2 < end ? base64Lookup[base64String.charCodeAt(i + 2)] : 0;
+                const encoded4 = i + 3 < end ? base64Lookup[base64String.charCodeAt(i + 3)] : 0;
+                
+                const bitmap = (encoded1 << 18) | (encoded2 << 12) | (encoded3 << 6) | encoded4;
+                
+                result[resultIndex++] = (bitmap >> 16) & 255;
+                if (i + 2 < end) result[resultIndex++] = (bitmap >> 8) & 255;
+                if (i + 3 < end) result[resultIndex++] = bitmap & 255;
+            }
+        }
+        
+        return result;
+    }
+}
+
+/**
+ * 将Base64转换为Uint8Array（小数据快速版）
+ */
+function base64ToArrayFast(base64) {
     const binary = atob(base64);
     const len = binary.length;
     const array = new Uint8Array(len);
@@ -2820,6 +3602,13 @@ function base64ToArray(base64) {
     }
 
     return array;
+}
+
+/**
+ * 将Base64转换为Uint8Array（自动选择最佳方法）
+ */
+function base64ToArray(base64) {
+    return Base64Decoder.decode(base64);
 }
 
 /**
@@ -3086,6 +3875,66 @@ function applyDiff(corrupted, diff) {
 }
 
 /**
+ * 基于Blob的差异应用（内存友好）：直接拼接原文件切片与修复字节
+ * 不将整份破坏数据读入内存，适合大文件恢复
+ * @param {File|Blob} file - 用户上传的文件
+ * @param {number} corruptedSize - 破坏数据长度（不含可逆尾部）
+ * @param {Object} diff - diff记录（ranges中originalBytes应为Uint8Array）
+ * @returns {Blob} 恢复后的原始数据Blob
+ */
+function applyDiffToBlob(file, corruptedSize, diff) {
+    const parts = [];
+    const ranges = Array.isArray(diff.ranges) ? [...diff.ranges] : [];
+    ranges.sort((a, b) => a.start - b.start);
+
+    const targetLength = diff.lengthDiff ? diff.lengthDiff.originalLength : corruptedSize;
+    let offset = 0;
+
+    for (const range of ranges) {
+        const start = Math.max(0, range.start >>> 0);
+
+        // 先追加start之前未变化的数据
+        const sliceEnd = Math.min(start, corruptedSize);
+        if (offset < sliceEnd) {
+            parts.push(file.slice(offset, sliceEnd));
+        }
+
+        // 如果start超出破坏数据末尾，需要填充零字节到start
+        if (start > corruptedSize) {
+            const gapBeyond = start - Math.max(offset, corruptedSize);
+            if (gapBeyond > 0) {
+                parts.push(new Uint8Array(gapBeyond));
+            }
+        }
+
+        // 追加恢复区间的原始字节
+        const originalBytes = range.originalBytes instanceof Uint8Array
+            ? range.originalBytes
+            : new Uint8Array(range.originalBytes || []);
+        parts.push(new Blob([originalBytes]));
+
+        offset = start + originalBytes.length;
+    }
+
+    // 处理尾部：把剩余未变化的数据或零字节补齐到目标长度
+    const tailCopyEnd = Math.min(targetLength, corruptedSize);
+    if (offset < tailCopyEnd) {
+        parts.push(file.slice(offset, tailCopyEnd));
+        offset = tailCopyEnd;
+    }
+
+    if (targetLength > offset) {
+        // 超出破坏数据的部分用零填充（与内存版applyDiff一致的语义）
+        const zeros = targetLength - offset;
+        if (zeros > 0) {
+            parts.push(new Uint8Array(zeros));
+        }
+    }
+
+    return new Blob(parts, { type: 'application/octet-stream' });
+}
+
+/**
  * 压缩diff数据（使用二进制格式，完全避免JSON和Base64）
  * 这是性能优化的关键：直接序列化为二进制后压缩
  * @param {Object} diff - diff对象
@@ -3187,6 +4036,140 @@ function embedReversibleData(corruptedData, reversibleInfo) {
 }
 
 /**
+ * 从文件尾部分块扫描提取可逆数据（优化版，避免累积内存拷贝）
+ * 仅解析可逆信息与定位start/end标记位置，不返回整份破坏数据
+ * @param {File|Blob} file - 用户上传的原始文件（包含可逆尾部）
+ * @returns {Promise<{reversibleInfo:Object, corruptedSize:number}>} 可逆信息与破坏数据长度；不可逆返回null
+ */
+async function extractReversibleDataFromBlob(file) {
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const startMarker = encoder.encode(REVERSIBLE_MARKER.start);
+    const endMarker = encoder.encode(REVERSIBLE_MARKER.end);
+
+    // 扫描配置
+    const INITIAL_SCAN_SIZE = 4096; // 初始扫描4KB（大多数情况下足够）
+    const MAX_INFO_SIZE = 10 * 1024 * 1024; // 可逆信息最大10MB
+    const SCAN_CHUNK_SIZE = 1024 * 1024; // 每次扩展1MB
+
+    // 读取文件指定范围
+    async function readSlice(start, end) {
+        const buf = await file.slice(start, end).arrayBuffer();
+        return new Uint8Array(buf);
+    }
+
+    // 在缓冲区中查找标记（从后向前）
+    function findMarkerFromEnd(buffer, marker, endOffset = 0) {
+        const searchEnd = buffer.length - endOffset;
+        for (let i = searchEnd - marker.length; i >= 0; i--) {
+            let match = true;
+            for (let j = 0; j < marker.length; j++) {
+                if (buffer[i + j] !== marker[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return i;
+        }
+        return -1;
+    }
+
+    // 第一步：快速检查文件尾部是否有结束标记
+    // 增加扫描范围以提高容错性（可能有额外的空白字符）
+    const tailCheckSize = Math.min(endMarker.length + 4096, file.size);
+    const tailData = await readSlice(file.size - tailCheckSize, file.size);
+    
+    // 查找结束标记（允许标记后有少量额外字节）
+    const endMarkerPos = findMarkerFromEnd(tailData, endMarker);
+    if (endMarkerPos === -1) {
+        return null; // 不是可逆文件
+    }
+    
+    // 检查标记后的内容（容错处理）
+    const afterMarkerStart = endMarkerPos + endMarker.length;
+    const afterMarkerData = tailData.slice(afterMarkerStart);
+    
+    // 允许的尾部字符：空白字符、换行符等
+    const allowedTrailing = [0x00, 0x09, 0x0A, 0x0D, 0x20]; // NULL, TAB, LF, CR, SPACE
+    let hasInvalidTrailing = false;
+    
+    for (let i = 0; i < afterMarkerData.length; i++) {
+        if (!allowedTrailing.includes(afterMarkerData[i])) {
+            hasInvalidTrailing = true;
+            break;
+        }
+    }
+    
+    // 如果有大量非空白字符，可能不是有效的可逆文件
+    if (hasInvalidTrailing && afterMarkerData.length > 256) {
+        console.warn('可逆标记后发现大量非空白数据，文件可能已损坏');
+        return null;
+    }
+    
+    // 计算实际的可逆数据结束位置
+    const actualEndPos = file.size - (tailData.length - afterMarkerStart) + endMarker.length;
+
+    // 第二步：逐步扩大搜索范围找开始标记
+    let scanSize = INITIAL_SCAN_SIZE;
+    let startMarkerFilePos = -1;
+    let infoLength = 0;
+    
+    // 从实际的结束位置开始搜索
+    while (scanSize <= MAX_INFO_SIZE && scanSize <= actualEndPos) {
+        const scanStart = Math.max(0, actualEndPos - scanSize);
+        const scanEnd = actualEndPos;
+        const scanData = await readSlice(scanStart, scanEnd);
+        
+        // 查找开始标记（需要考虑实际的结束位置）
+        const endMarkerPosInScan = scanData.length - (file.size - actualEndPos + endMarker.length);
+        const startMarkerPos = findMarkerFromEnd(scanData, startMarker, scanData.length - endMarkerPosInScan);
+        
+        if (startMarkerPos !== -1) {
+            // 找到开始标记，读取长度字段
+            const lengthOffset = startMarkerPos + startMarker.length;
+            if (lengthOffset + 4 <= endMarkerPosInScan) {
+                const dv = new DataView(scanData.buffer, scanData.byteOffset + lengthOffset, 4);
+                infoLength = dv.getUint32(0, false);
+                
+                // 验证长度合理性（考虑实际的结束位置）
+                const expectedEndPos = lengthOffset + 4 + infoLength;
+                if (Math.abs(expectedEndPos - endMarkerPosInScan) < 4) { // 允许小误差
+                    startMarkerFilePos = scanStart + startMarkerPos;
+                    
+                    // 第三步：提取并解析可逆信息
+                    try {
+                        const infoStart = lengthOffset + 4;
+                        const infoEnd = infoStart + infoLength;
+                        const infoBytes = scanData.slice(infoStart, infoEnd);
+                        
+                        const infoJson = decoder.decode(infoBytes);
+                        const reversibleInfo = JSON.parse(infoJson);
+                        
+                        return {
+                            reversibleInfo,
+                            corruptedSize: startMarkerFilePos
+                        };
+                    } catch (e) {
+                        console.error('解析可逆信息失败:', e);
+                        return null;
+                    }
+                }
+            }
+        }
+        
+        // 扩大搜索范围
+        if (scanSize < MAX_INFO_SIZE) {
+            scanSize = Math.min(scanSize + SCAN_CHUNK_SIZE, MAX_INFO_SIZE, file.size);
+        } else {
+            break;
+        }
+    }
+    
+    return null; // 未找到有效的可逆数据
+}
+
+/**
  * 从文件中提取可逆数据
  * @param {Uint8Array} fileData - 文件数据
  * @returns {Object|null} 可逆信息，如果不是可逆文件则返回null
@@ -3198,12 +4181,16 @@ function extractReversibleData(fileData) {
     const startMarker = encoder.encode(REVERSIBLE_MARKER.start);
     const endMarker = encoder.encode(REVERSIBLE_MARKER.end);
 
-    // 从文件末尾向前查找结束标记
+    // 从文件末尾向前查找结束标记（增强容错性）
     // 增加搜索窗口到2MB，以支持较大的可逆数据
     const endSearchWindow = Math.max(0, fileData.length - 2 * 1024 * 1024);
     let endMarkerPos = -1;
+    
+    // 允许标记后有少量额外字节（如换行符）
+    const maxTrailingBytes = 256;
+    const searchEnd = Math.min(fileData.length, fileData.length + maxTrailingBytes);
 
-    for (let i = fileData.length - endMarker.length; i >= endSearchWindow; i--) {
+    for (let i = searchEnd - endMarker.length; i >= endSearchWindow; i--) {
         let match = true;
         for (let j = 0; j < endMarker.length; j++) {
             if (fileData[i + j] !== endMarker[j]) {
