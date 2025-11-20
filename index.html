@@ -35,16 +35,16 @@
             </div>
 
             <!-- 文件上传区 -->
-            <section class="upload-section">
-                <div class="upload-area" id="uploadArea">
-                    <svg id="uploadIcon" width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <section class="upload-section" aria-label="文件上传区域">
+                <div class="upload-area" id="uploadArea" role="button" aria-label="点击或拖拽文件上传" tabindex="0">
+                    <svg id="uploadIcon" width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M30 10 L30 40 M15 25 L30 10 L45 25" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <rect x="10" y="45" width="40" height="5" stroke="black" stroke-width="2"/>
                     </svg>
                     <p class="upload-text">点击或拖拽文件到此处</p>
                     <p class="upload-hint">支持格式：PDF, DOCX, CMD, PS1, LICENSE, DB, SIB, PNG, ZIP 等</p>
                     <p class="upload-hint" style="margin-top: 8px; color: var(--gray-600); font-size: 13px;">支持批量上传多个文件</p>
-                    <input type="file" id="fileInput" class="file-input" accept="*/*" multiple>
+                    <input type="file" id="fileInput" class="file-input" accept="*/*" multiple aria-label="选择文件">
                 </div>
 
                 <!-- 打印机吐纸动画区 -->
@@ -192,12 +192,26 @@
             </section>
 
             <!-- 处理状态区 -->
-            <section class="status-section" id="statusSection" style="display: none;">
+            <section class="status-section" id="statusSection" style="display: none;" role="status" aria-live="polite">
                 <div class="status-content">
-                    <div class="spinner"></div>
+                    <div class="spinner" aria-hidden="true"></div>
                     <p class="status-text" id="statusText">正在处理文件...</p>
+                    
+                    <!-- 进度条 -->
+                    <div class="progress-container" id="progressContainer" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+                        </div>
+                        <div class="progress-info">
+                            <span class="progress-percent" id="progressPercent">0%</span>
+                            <span class="progress-time" id="progressTime"></span>
+                        </div>
+                    </div>
                 </div>
             </section>
+            
+            <!-- 屏幕阅读器通知区域（视觉隐藏） -->
+            <div class="sr-only" role="status" aria-live="assertive" aria-atomic="true" id="screenReaderAnnouncements"></div>
 
             <!-- 完成提示区 -->
             <section class="success-section" id="successSection" style="display: none;">
@@ -289,8 +303,15 @@
         </footer>
     </div>
 
-    <!-- pako 压缩库 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    <script src="app.js"></script>
+            <!-- pako 压缩库 - 本地托管，保护用户隐私 -->
+            <!-- 版本: 2.1.0 | 用途: 可逆模式数据压缩 -->
+            <!-- 重要: 不使用CDN以确保完全本地运行，符合隐私政策 -->
+            <script src="libs/pako.min.js"></script>
+            
+            <!-- Web Worker 预加载 - 用于后台密码学操作 -->
+            <!-- 注意: Worker文件通过new Worker()动态加载，此处仅作预加载优化 -->
+            <link rel="prefetch" href="crypto-worker.js" as="script">
+            
+            <script src="app.js"></script>
 </body>
 </html>
