@@ -289,12 +289,20 @@ const SUPPORTED_FORMATS = Object.values(FILE_CATEGORIES).reduce((all, category) 
 // 即使使用分块处理，浏览器仍需要足够内存创建最终Blob
 // 因此需要根据实际可用内存动态调整文件大小限制
 function getMaxFileSize() {
+    const defaultSize = 512 * 1024 * 1024; // 512MB
+
+    // Node等非浏览器环境下，直接使用默认值
+    if (typeof navigator === 'undefined') {
+        return defaultSize;
+    }
+
     // 尝试获取设备内存信息
-    const deviceMemory = navigator.deviceMemory; // 单位：GB
-    
+    const deviceMemory = typeof navigator.deviceMemory === 'number' ? navigator.deviceMemory : undefined; // 单位：GB
+
     // 检查是否为移动设备
-    const isMobile = /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent);
-    
+    const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+    const isMobile = /Mobile|Android|iPhone|iPad/i.test(userAgent);
+
     // 根据设备类型和内存设置限制
     if (isMobile) {
         // 移动设备：保守限制
@@ -302,7 +310,7 @@ function getMaxFileSize() {
             return 256 * 1024 * 1024; // 256MB
         } else if (deviceMemory && deviceMemory <= 4) {
             return 512 * 1024 * 1024; // 512MB
-        } else {
+        } else if (deviceMemory) {
             return 1024 * 1024 * 1024; // 1GB
         }
     } else {
@@ -311,11 +319,13 @@ function getMaxFileSize() {
             return 512 * 1024 * 1024; // 512MB
         } else if (deviceMemory && deviceMemory <= 8) {
             return 1024 * 1024 * 1024; // 1GB
-        } else {
+        } else if (deviceMemory) {
             // 高配设备，但仍需考虑浏览器限制
             return 1536 * 1024 * 1024; // 1.5GB
         }
     }
+
+    return defaultSize;
 }
 
 // 使用动态计算的最大文件大小
@@ -3113,19 +3123,39 @@ class CryptoWorkerManager {
     async executeFallback(type, params) {
         // 降级：在主线程执行
         console.warn(`Executing ${type} in main thread (Worker unavailable)`);
-        
+
         switch (type) {
-            case 'deriveKey':
-                // 使用原有的同步函数
-                const key = await deriveKeyFromPasswordSync(params.password, params.salt);
-                return { key, salt: params.salt };
-                
-            case 'encrypt':
-                return await encryptDataSync(params.data, params.password);
-                
-            case 'decrypt':
-                return await decryptDataSync(params.encryptedData, params.password, params.iv, params.salt);
-                
+            case 'deriveKey': {
+                const saltUint8 = params.salt instanceof Uint8Array ? params.salt : new Uint8Array(params.salt || []);
+                const cryptoKey = await deriveKeyFromPasswordSync(params.password, saltUint8);
+                const keyBytes = new Uint8Array(await crypto.subtle.exportKey('raw', cryptoKey));
+
+                return {
+                    key: Array.from(keyBytes),
+                    salt: Array.from(saltUint8)
+                };
+            }
+
+            case 'encrypt': {
+                const dataUint8 = params.data instanceof Uint8Array ? params.data : new Uint8Array(params.data || []);
+                const result = await encryptDataSync(dataUint8, params.password);
+
+                return {
+                    encrypted: Array.from(result.encrypted),
+                    iv: Array.from(result.iv),
+                    salt: Array.from(result.salt)
+                };
+            }
+
+            case 'decrypt': {
+                const encryptedData = params.encryptedData instanceof Uint8Array ? params.encryptedData : new Uint8Array(params.encryptedData || []);
+                const iv = params.iv instanceof Uint8Array ? params.iv : new Uint8Array(params.iv || []);
+                const salt = params.salt instanceof Uint8Array ? params.salt : new Uint8Array(params.salt || []);
+                const decrypted = await decryptDataSync(encryptedData, params.password, iv, salt);
+
+                return Array.from(decrypted);
+            }
+
             default:
                 throw new Error(`Unknown operation: ${type}`);
         }

@@ -54,7 +54,8 @@ self.addEventListener('message', async (event) => {
 async function deriveKeyFromPassword(password, salt) {
     const encoder = new TextEncoder();
     const passwordBuffer = encoder.encode(password);
-    
+    const saltBuf = salt instanceof Uint8Array ? salt : new Uint8Array(salt);
+
     const baseKey = await crypto.subtle.importKey(
         'raw',
         passwordBuffer,
@@ -62,12 +63,12 @@ async function deriveKeyFromPassword(password, salt) {
         false,
         ['deriveKey']
     );
-    
+
     // 这里执行10万次迭代，但不会阻塞主线程
     const key = await crypto.subtle.deriveKey(
         {
             name: 'PBKDF2',
-            salt: salt,
+            salt: saltBuf,
             iterations: 100000,
             hash: 'SHA-256'
         },
@@ -84,7 +85,7 @@ async function deriveKeyFromPassword(password, salt) {
     const exportedKey = await crypto.subtle.exportKey('raw', key);
     return {
         key: Array.from(new Uint8Array(exportedKey)),
-        salt: Array.from(salt)
+        salt: Array.from(saltBuf)
     };
 }
 
